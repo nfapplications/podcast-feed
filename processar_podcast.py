@@ -66,7 +66,7 @@ def video_details(video_id: str) -> dict[str, Any]:
     if not VIDEO_ID.fullmatch(video_id):
         raise ValueError(f"ID de vídeo inválido: {video_id!r}")
     url = f"https://www.youtube.com/watch?v={video_id}"
-    cmd = ["yt-dlp", "--dump-single-json", "--no-download", "--no-playlist", "--no-warnings"]
+    cmd = ["yt-dlp", "--dump-single-json", "--skip-download", "--no-playlist", "--no-warnings"]
     if Path("cookies.txt").exists():
         cmd += ["--cookies", "cookies.txt"]
     cmd.append(url)
