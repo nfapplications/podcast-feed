@@ -62,7 +62,7 @@ jobs:
           YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
         run: |
           if [ -n "$YOUTUBE_COOKIES" ]; then
-            echo "$YOUTUBE_COOKIES" > cookies.txt
+            printf '%s\n' "$YOUTUBE_COOKIES" > cookies.txt
             chmod 600 cookies.txt
           fi
 

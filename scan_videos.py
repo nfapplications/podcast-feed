@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -94,6 +95,7 @@ def main() -> int:
     candidate_ids = recent_video_ids(source, args.limit)
     inspected = 0
     for video_id in candidate_ids:
+        time.sleep(2)
         try:
             details = video_details(video_id)
         except (ValueError, RuntimeError) as exc:
