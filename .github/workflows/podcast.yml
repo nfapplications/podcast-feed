@@ -34,6 +34,7 @@ jobs:
     env:
       YOUTUBE_SOURCE_URL: https://www.youtube.com/@nucleodafelive/streams
       YOUTUBE_CHANNEL_ID: UC7TCRwfLKSwDLErV1Zrq-_A
+      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
       PODCAST_TITLE: Núcleo da Fé
       PODCAST_AUTHOR: Núcleo da Fé
       PODCAST_SITE_URL: https://www.youtube.com/@nucleodafelive

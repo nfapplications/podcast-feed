@@ -40,6 +40,58 @@ DEFAULT_SOURCE = "https://www.youtube.com/@nucleodafelive/streams"
 DEFAULT_CHANNEL_ID = "UC7TCRwfLKSwDLErV1Zrq-_A"
 
 
+def parse_iso8601_duration(value: str) -> int:
+    match = re.fullmatch(r"P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", value)
+    if not match:
+        return 0
+    days, hours, minutes, secs = (int(group or 0) for group in match.groups())
+    return days * 86400 + hours * 3600 + minutes * 60 + secs
+
+
+def youtube_api_recent_videos(channel_id: str, api_key: str, limit: int = 20) -> list[dict[str, Any]]:
+    uploads_id = f"UU{channel_id[2:]}" if channel_id.startswith("UC") else channel_id
+    url = (
+        f"https://www.googleapis.com/youtube/v3/playlistItems"
+        f"?part=contentDetails&playlistId={uploads_id}&maxResults={min(limit, 50)}&key={api_key}"
+    )
+    request = urllib.request.Request(url, headers={"User-Agent": "podcast-feed/1.0"})
+    with urllib.request.urlopen(request, timeout=20) as response:
+        playlist_data = json.loads(response.read().decode("utf-8"))
+    items = playlist_data.get("items", [])
+    video_ids = [item["contentDetails"]["videoId"] for item in items if "contentDetails" in item]
+    if not video_ids:
+        return []
+
+    ids_param = ",".join(video_ids)
+    videos_url = (
+        f"https://www.googleapis.com/youtube/v3/videos"
+        f"?part=snippet,contentDetails&id={ids_param}&key={api_key}"
+    )
+    req_videos = urllib.request.Request(videos_url, headers={"User-Agent": "podcast-feed/1.0"})
+    with urllib.request.urlopen(req_videos, timeout=20) as response:
+        videos_data = json.loads(response.read().decode("utf-8"))
+
+    results: list[dict[str, Any]] = []
+    for item in videos_data.get("items", []):
+        snippet = item.get("snippet", {})
+        content = item.get("contentDetails", {})
+        live_status = snippet.get("liveBroadcastContent", "none")
+        if live_status in ("live", "upcoming"):
+            continue
+        duration_sec = parse_iso8601_duration(content.get("duration", ""))
+        if duration_sec <= 0:
+            continue
+        results.append({
+            "id": item["id"],
+            "title": snippet.get("title", item["id"]),
+            "duration": duration_sec,
+            "channel_id": snippet.get("channelId", channel_id),
+            "upload_date": snippet.get("publishedAt", "").replace("-", "")[:8],
+            "description": snippet.get("description", ""),
+        })
+    return results
+
+
 def required_env(name: str) -> str:
     value = os.environ.get(name, "").strip()
     if not value:

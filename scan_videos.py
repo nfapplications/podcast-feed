@@ -13,11 +13,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from processar_podcast import (
+    DEFAULT_CHANNEL_ID,
     DEFAULT_SOURCE,
     existing_guids,
     load_feed,
     recent_video_ids,
     video_details,
+    youtube_api_recent_videos,
 )
 
 LOG = logging.getLogger("podcast-scan")
@@ -91,6 +93,42 @@ def main() -> int:
     videos = state["videos"]
     published = existing_guids(load_feed(args.feed)[1])
     new_ready: list[str] = []
+    api_key = os.getenv("YOUTUBE_API_KEY", "").strip()
+    channel_id = os.getenv("YOUTUBE_CHANNEL_ID", DEFAULT_CHANNEL_ID)
+
+    if api_key:
+        LOG.info("Usando YouTube Data API v3 oficial...")
+        try:
+            candidates = youtube_api_recent_videos(channel_id, api_key, args.limit)
+        except Exception as exc:
+            LOG.warning("Falha na YouTube Data API (%s); usando yt-dlp como fallback.", exc)
+            candidates = []
+        if candidates:
+            for details in candidates:
+                video_id = details["id"]
+                duration = int(details["duration"])
+                previous = videos.get(video_id, {})
+                longest, checks, status = classify(
+                    previous, duration, f"yt:{video_id}" in published,
+                    args.max_podcast_minutes * 60, args.min_reduction_minutes * 60,
+                )
+                if status == "ready" and previous.get("status") != "ready":
+                    new_ready.append(video_id)
+                elif status == "short_without_baseline" and "duration" not in previous:
+                    new_ready.append(video_id)
+                videos[video_id] = {
+                    "title": details.get("title", video_id),
+                    "first_seen": previous.get("first_seen", datetime.now(timezone.utc).isoformat()),
+                    "duration": duration,
+                    "longest_duration": longest,
+                    "stable_checks": checks,
+                    "status": status,
+                }
+            write_summary(videos, new_ready)
+            if not args.dry_run:
+                args.state.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            return 0
+
     source = os.getenv("YOUTUBE_SOURCE_URL", DEFAULT_SOURCE)
     candidate_ids = recent_video_ids(source, args.limit)
     inspected = 0
