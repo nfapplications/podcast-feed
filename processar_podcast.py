@@ -120,7 +120,7 @@ def video_details(video_id: str) -> dict[str, Any]:
     url = f"https://www.youtube.com/watch?v={video_id}"
     cmd = [
         "yt-dlp", "--dump-single-json", "--skip-download", "--no-playlist", "--no-warnings",
-        "--extractor-args", "youtube:player_client=android,ios,web",
+        "-f", "ba/b/best",
     ]
     if Path("cookies.txt").exists():
         cmd += ["--cookies", "cookies.txt"]
