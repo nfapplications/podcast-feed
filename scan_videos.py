@@ -63,7 +63,11 @@ def write_summary(records: dict, new_ready: list[str]) -> None:
     if os.getenv("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as file:
             file.write(f"new_ready={','.join(new_ready)}\n")
-            file.write(f"ready_ids={','.join(video_id for video_id, record in records.items() if record['status'] == 'ready')}\n")
+            ready_ids = [
+                video_id for video_id, record in records.items()
+                if record["status"] in ("ready", "short_without_baseline")
+            ]
+            file.write(f"ready_ids={','.join(ready_ids)}\n")
 
 
 def main() -> int:
@@ -103,6 +107,8 @@ def main() -> int:
             args.max_podcast_minutes * 60, args.min_reduction_minutes * 60,
         )
         if status == "ready" and previous.get("status") != "ready":
+            new_ready.append(video_id)
+        elif status == "short_without_baseline" and "duration" not in previous:
             new_ready.append(video_id)
         videos[video_id] = {
             "title": details.get("title", video_id),

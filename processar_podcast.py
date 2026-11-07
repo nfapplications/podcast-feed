@@ -351,6 +351,8 @@ def main() -> int:
     parser.add_argument("--plan", type=Path, default=Path("episodes.json"))
     parser.add_argument("--feed", type=Path, default=Path("podcast.xml"))
     parser.add_argument("--video-id", help="Publica um vídeo marcado como pronto em video_state.json")
+    parser.add_argument("--start", help="Início do corte (HH:MM:SS ou segundos)")
+    parser.add_argument("--end", help="Fim do corte (HH:MM:SS ou segundos)")
     parser.add_argument("--state", type=Path, default=Path("video_state.json"))
     args = parser.parse_args()
     if args.max_episodes < 1 or args.candidate_limit < 1:
@@ -362,15 +364,29 @@ def main() -> int:
     if args.video_id:
         if not VIDEO_ID.fullmatch(args.video_id):
             parser.error("--video-id deve ser um ID de YouTube válido.")
-        if not args.state.exists():
-            raise ValueError("video_state.json não existe; execute a varredura primeiro.")
-        state = json.loads(args.state.read_text(encoding="utf-8"))
-        record = state.get("videos", {}).get(args.video_id, {})
-        if record.get("status") not in ("ready", "short_without_baseline"):
-            raise ValueError(f"O vídeo {args.video_id} ainda não está pronto para revisão.")
-        if int(record["duration"]) > 75 * 60:
-            raise ValueError(f"O vídeo {args.video_id} ainda supera 75 minutos.")
-        specs = [{"video_id": args.video_id, "expected_duration": record["duration"]}]
+        has_cut = bool(args.start or args.end)
+        if has_cut:
+            if not (args.start and args.end):
+                parser.error("Para recortar um vídeo, forneça ambos --start e --end.")
+            start_sec = seconds(args.start)
+            end_sec = seconds(args.end)
+            if end_sec <= start_sec or end_sec - start_sec < 900:
+                raise ValueError("O corte deve durar ao menos 15 minutos.")
+            specs = [{
+                "video_id": args.video_id,
+                "start_seconds": start_sec,
+                "end_seconds": end_sec,
+            }]
+        else:
+            if not args.state.exists():
+                raise ValueError("video_state.json não existe; execute a varredura primeiro.")
+            state = json.loads(args.state.read_text(encoding="utf-8"))
+            record = state.get("videos", {}).get(args.video_id, {})
+            if record.get("status") not in ("ready", "short_without_baseline"):
+                raise ValueError(f"O vídeo {args.video_id} ainda não está pronto para revisão.")
+            if int(record["duration"]) > 75 * 60:
+                raise ValueError(f"O vídeo {args.video_id} ainda supera 75 minutos.")
+            specs = [{"video_id": args.video_id, "expected_duration": record["duration"]}]
     else:
         specs = select_specs(args.mode, args.candidate_limit, args.plan)
     published = existing_guids(channel)
@@ -384,10 +400,11 @@ def main() -> int:
         except ValueError as exc:
             LOG.info("Ignorando %s: %s", video_id, exc)
             continue
-        if args.video_id and int(details["duration"]) != spec["expected_duration"]:
+        if spec.get("end_seconds"):
+            if spec["end_seconds"] > int(details["duration"]) + 3:
+                raise ValueError(f"O fim do corte de {video_id} supera a duração do vídeo.")
+        elif args.video_id and spec.get("expected_duration") and int(details["duration"]) != spec["expected_duration"]:
             raise ValueError(f"A duração de {video_id} mudou após a última varredura. Execute a varredura novamente.")
-        if args.mode == "reviewed" and spec["end_seconds"] > int(details["duration"]) + 3:
-            raise ValueError(f"O fim do corte de {video_id} supera a duração do vídeo.")
         selected.append((spec, details))
         if len(selected) >= args.max_episodes:
             break

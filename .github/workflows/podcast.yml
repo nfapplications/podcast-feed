@@ -10,6 +10,14 @@ on:
         description: "ID do vídeo marcado como pronto (deixe vazio para só verificar)"
         required: false
         type: string
+      start_time:
+        description: "Início do corte (ex: 00:35:00) - opcional se o vídeo já estiver editado"
+        required: false
+        type: string
+      end_time:
+        description: "Fim do corte (ex: 01:25:00) - opcional se o vídeo já estiver editado"
+        required: false
+        type: string
 
 concurrency:
   group: podcast-feed
@@ -39,10 +47,10 @@ jobs:
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
     steps:
       - name: Obter arquivos do repositório
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Preparar Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -76,9 +84,11 @@ jobs:
             fi
             body_file="$(mktemp)"
             printf '%s\n' \
-              "O vídeo https://www.youtube.com/watch?v=$id ficou mais curto e manteve a nova duração por duas verificações." \
+              "O vídeo https://www.youtube.com/watch?v=$id está com duração de pregação e pronto para revisão." \
               "" \
-              "Confira se restou apenas a pregação. Para publicar, execute o workflow 'Monitorar e publicar podcast' com publish_video_id=$id." \
+              "Confira no YouTube se restou apenas a pregação. Para publicar, execute o workflow 'Monitorar e publicar podcast' com publish_video_id=$id." \
+              "" \
+              "Dica: Caso o vídeo ainda precise de corte de início e fim, você também pode preencher start_time e end_time no workflow." \
               > "$body_file"
             gh issue create --title "[Podcast pronto] $id" --body-file "$body_file"
             rm -f "$body_file"
@@ -94,8 +104,14 @@ jobs:
         if: inputs.publish_video_id != ''
         env:
           VIDEO_ID: ${{ inputs.publish_video_id }}
+          START_TIME: ${{ inputs.start_time }}
+          END_TIME: ${{ inputs.end_time }}
         run: |
-          python processar_podcast.py --video-id "$VIDEO_ID"
+          cmd=(python processar_podcast.py --video-id "$VIDEO_ID")
+          if [ -n "$START_TIME" ] && [ -n "$END_TIME" ]; then
+            cmd+=(--start "$START_TIME" --end "$END_TIME")
+          fi
+          "${cmd[@]}"
           python scan_videos.py
           git add podcast.xml video_state.json
           if ! git diff --cached --quiet; then
@@ -129,7 +145,7 @@ jobs:
 
       - name: Enviar artefato do feed
         if: steps.feed.outputs.ready == 'true'
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v3
         with:
           path: public
 
