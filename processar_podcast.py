@@ -66,7 +66,10 @@ def video_details(video_id: str) -> dict[str, Any]:
     if not VIDEO_ID.fullmatch(video_id):
         raise ValueError(f"ID de vídeo inválido: {video_id!r}")
     url = f"https://www.youtube.com/watch?v={video_id}"
-    cmd = ["yt-dlp", "--dump-single-json", "--skip-download", "--no-playlist", "--no-warnings"]
+    cmd = [
+        "yt-dlp", "--dump-single-json", "--skip-download", "--no-playlist", "--no-warnings",
+        "--extractor-args", "youtube:player_client=android,ios,web",
+    ]
     if Path("cookies.txt").exists():
         cmd += ["--cookies", "cookies.txt"]
     cmd.append(url)
@@ -85,6 +88,7 @@ def recent_video_ids(source_url: str, limit: int) -> list[str]:
     cmd = [
         "yt-dlp", "--dump-single-json", "--flat-playlist", "--playlist-end", str(limit),
         "--no-warnings",
+        "--extractor-args", "youtube:player_client=android,ios,web",
     ]
     if Path("cookies.txt").exists():
         cmd += ["--cookies", "cookies.txt"]

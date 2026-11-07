@@ -57,13 +57,17 @@ jobs:
       - name: Instalar dependências
         run: python -m pip install -r requirements.txt
 
-      - name: Configurar cookies do YouTube (se disponíveis)
-        env:
-          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+      - name: Configurar cookies do YouTube
         run: |
-          if [ -n "$YOUTUBE_COOKIES" ]; then
-            printf '%s\n' "$YOUTUBE_COOKIES" > cookies.txt
+          cat << 'EOF' > cookies.txt
+          ${{ secrets.YOUTUBE_COOKIES }}
+          EOF
+          if [ -s cookies.txt ]; then
             chmod 600 cookies.txt
+            echo "Arquivo cookies.txt criado com $(wc -l < cookies.txt) linhas"
+          else
+            echo "Nenhum cookie configurado em secrets.YOUTUBE_COOKIES"
+            rm -f cookies.txt
           fi
 
       - name: Verificar transmissões concluídas
