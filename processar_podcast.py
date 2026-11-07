@@ -66,7 +66,11 @@ def video_details(video_id: str) -> dict[str, Any]:
     if not VIDEO_ID.fullmatch(video_id):
         raise ValueError(f"ID de vídeo inválido: {video_id!r}")
     url = f"https://www.youtube.com/watch?v={video_id}"
-    data = json.loads(run(["yt-dlp", "--dump-single-json", "--no-download", "--no-playlist", "--no-warnings", url]))
+    cmd = ["yt-dlp", "--dump-single-json", "--no-download", "--no-playlist", "--no-warnings"]
+    if Path("cookies.txt").exists():
+        cmd += ["--cookies", "cookies.txt"]
+    cmd.append(url)
+    data = json.loads(run(cmd))
     expected = os.environ.get("YOUTUBE_CHANNEL_ID", DEFAULT_CHANNEL_ID)
     if data.get("channel_id") != expected:
         raise ValueError(f"O vídeo {video_id} não pertence ao canal esperado {expected}.")
@@ -78,10 +82,14 @@ def video_details(video_id: str) -> dict[str, Any]:
 
 
 def recent_video_ids(source_url: str, limit: int) -> list[str]:
-    data = json.loads(run([
+    cmd = [
         "yt-dlp", "--dump-single-json", "--flat-playlist", "--playlist-end", str(limit),
-        "--no-warnings", source_url,
-    ]))
+        "--no-warnings",
+    ]
+    if Path("cookies.txt").exists():
+        cmd += ["--cookies", "cookies.txt"]
+    cmd.append(source_url)
+    data = json.loads(run(cmd))
     entries = data.get("entries") or [data]
     ids: list[str] = []
     for entry in entries:
@@ -191,10 +199,14 @@ def existing_guids(channel: ET.Element) -> set[str]:
 
 def download_audio(video_id: str, directory: Path) -> Path:
     url = f"https://www.youtube.com/watch?v={video_id}"
-    run([
+    cmd = [
         "yt-dlp", "--no-playlist", "--no-warnings", "--no-progress", "-f", "ba/b",
-        "-o", str(directory / "source.%(ext)s"), url,
-    ])
+        "-o", str(directory / "source.%(ext)s"),
+    ]
+    if Path("cookies.txt").exists():
+        cmd += ["--cookies", "cookies.txt"]
+    cmd.append(url)
+    run(cmd)
     files = [path for path in directory.glob("source.*") if path.is_file() and path.stat().st_size]
     if len(files) != 1:
         raise RuntimeError(f"Download de {video_id} não gerou um único arquivo de áudio.")
