@@ -61,6 +61,23 @@ class PodcastTests(unittest.TestCase):
         self.assertEqual(xml.count(b"xmlns:itunes="), 1)
         self.assertEqual(existing_guids(channel), {"yt:1N7M-oTSOlY"})
 
+    def test_video_enclosure_e_vodcast(self):
+        root = ET.Element("rss", {"version": "2.0"})
+        channel = ET.SubElement(root, "channel")
+        update_channel(channel, "https://exemplo.com/vodcast.xml", "https://exemplo.com/capa.jpg", "podcast@exemplo.com", title_suffix=" (Vídeo)")
+        add_episode(
+            channel,
+            {"id": "5CyVFrCs5Pk", "title": "Culto ao vivo - Mensagem", "upload_date": "20261108"},
+            {}, "https://audio.exemplo.com/episodes/5CyVFrCs5Pk.mp4", 543210, 3200, media_type="video/mp4"
+        )
+        item = channel.find("item")
+        self.assertIsNotNone(item)
+        enclosure = item.find("enclosure")
+        self.assertIsNotNone(enclosure)
+        self.assertEqual(enclosure.get("type"), "video/mp4")
+        self.assertEqual(enclosure.get("url"), "https://audio.exemplo.com/episodes/5CyVFrCs5Pk.mp4")
+        self.assertIn("Vídeo", channel.findtext("title", ""))
+
 
 if __name__ == "__main__":
     unittest.main()

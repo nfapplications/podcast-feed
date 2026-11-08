@@ -49,13 +49,16 @@ As credenciais do Cloudflare R2 e configurações do canal ficam salvas no arqui
 
 ## 📡 Links de Distribuição
 
-- **Feed RSS Oficial:** `https://nfapplications.github.io/podcast-feed/podcast.xml`
-- **Armazenamento de Áudio:** Cloudflare R2 `podcast-nucleodafe`
+- **Feed RSS de Áudio:** `https://nfapplications.github.io/podcast-feed/podcast.xml` (Spotify, Apple Podcasts, Amazon, etc.)
+- **Feed RSS de Vídeo (Vodcast):** `https://nfapplications.github.io/podcast-feed/vodcast.xml` (Apple Podcasts & agregadores com suporte a vídeo)
+- **Armazenamento:** Cloudflare R2 `podcast-nucleodafe` (`pub-782ee0b9c17b40bcae3d6d60d29ee756.r2.dev`)
 - **Repositório:** `nfapplications/podcast-feed`
 
 ### Cadastro nas Plataformas:
-- **Spotify:** [podcasters.spotify.com](https://podcasters.spotify.com) → Adicionar podcast existente → Cole a URL do RSS.
-- **Apple Podcasts:** [podcastsconnect.apple.com](https://podcastsconnect.apple.com) → Adicionar podcast via RSS → Cole a URL do RSS.
+- **Spotify:** [podcasters.spotify.com](https://podcasters.spotify.com) → Adicionar podcast existente → Cole a URL do Feed de Áudio (`podcast.xml`). *(Nota: o Spotify ingere áudio via RSS; vídeos no Spotify são gerenciados diretamente pelo painel do Spotify for Creators).*
+- **Apple Podcasts:** [podcastsconnect.apple.com](https://podcastsconnect.apple.com) → Adicionar podcast via RSS:
+  - Para áudio: Cole a URL de `podcast.xml`.
+  - Para vídeo (Vodcast): Crie um programa adicional com a URL de `vodcast.xml`.
 - **Amazon Music:** [podcasters.amazon.com](https://podcasters.amazon.com) → Submeter RSS.
 
 ---
@@ -68,6 +71,16 @@ source .venv/bin/activate
 
 # Listar transmissões do canal
 python scan_videos.py --dry-run
+
+# Publicar Áudio (padrão)
+python processar_podcast.py --video-id 5CyVFrCs5Pk --start 00:35:00 --end 01:20:00
+
+# Publicar Vídeo (MP4 para vodcast.xml)
+python processar_podcast.py --video-id 5CyVFrCs5Pk --start 00:35:00 --end 01:20:00 --format video
+
+# Publicar Ambos (Áudio em podcast.xml + Vídeo em vodcast.xml)
+python processar_podcast.py --video-id 5CyVFrCs5Pk --start 00:35:00 --end 01:20:00 --format both
+```
 
 # Publicar com corte de pregação (ex: 35 min a 1h20)
 python processar_podcast.py --video-id 5CyVFrCs5Pk --start 00:35:00 --end 01:20:00

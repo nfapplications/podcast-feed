@@ -3,3 +3,5 @@ __pycache__/
 .env
 .venv/
 *.mp3
+*.mp4
+cookies.txt

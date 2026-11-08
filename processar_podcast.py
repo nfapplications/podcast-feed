@@ -226,13 +226,16 @@ def load_feed(path: Path) -> tuple[ET.Element, ET.Element]:
     return root, ET.SubElement(root, "channel")
 
 
-def update_channel(channel: ET.Element, feed_url: str, image_url: str, email: str) -> None:
-    title = os.environ.get("PODCAST_TITLE", "Núcleo da Fé")
+def update_channel(channel: ET.Element, feed_url: str, image_url: str, email: str, title_suffix: str = "") -> None:
+    base_title = os.environ.get("PODCAST_TITLE", "Núcleo da Fé")
+    title = f"{base_title}{title_suffix}" if title_suffix else base_title
     set_text(channel, "title", title)
     set_text(channel, "link", os.environ.get("PODCAST_SITE_URL", "https://www.youtube.com/@nucleodafelive"))
-    set_text(channel, "description", os.environ.get(
+    base_desc = os.environ.get(
         "PODCAST_DESCRIPTION", "Pregações e mensagens do Núcleo da Fé para acompanhar onde você estiver."
-    ))
+    )
+    desc = f"{base_desc} (Edição em vídeo para Apple Podcasts e reprodutores compatíveis)" if title_suffix else base_desc
+    set_text(channel, "description", desc)
     set_text(channel, "language", "pt-BR")
     self_link = channel.find(f"{{{ATOM}}}link")
     if self_link is None:
@@ -278,6 +281,46 @@ def download_audio(video_id: str, directory: Path) -> Path:
     if len(files) != 1:
         raise RuntimeError(f"Download de {video_id} não gerou um único arquivo de áudio.")
     return files[0]
+
+
+def download_video(video_id: str, directory: Path) -> Path:
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    cmd = [
+        "yt-dlp", "--no-playlist", "--no-warnings", "--no-progress",
+        "-f", "bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]/b",
+        "--merge-output-format", "mp4",
+        "-o", str(directory / "source_video.%(ext)s"),
+    ]
+    if Path("cookies.txt").exists():
+        cmd += ["--cookies", "cookies.txt"]
+    cmd.append(url)
+    run(cmd)
+    files = [path for path in directory.glob("source_video.*") if path.is_file() and path.stat().st_size]
+    if not files:
+        raise RuntimeError(f"Download do vídeo de {video_id} não gerou arquivo.")
+    return files[0]
+
+
+def encode_mp4(source: Path, output: Path, start: int | None, end: int | None) -> tuple[int, int]:
+    command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+    if start is not None and end is not None:
+        command += ["-ss", str(start), "-to", str(end)]
+    command += [
+        "-i", str(source),
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "24",
+        "-c:a", "aac", "-b:a", "128k", "-ac", "2", "-ar", "44100",
+        "-movflags", "+faststart",
+        str(output),
+    ]
+    run(command)
+    size = output.stat().st_size
+    if size == 0:
+        raise RuntimeError("FFmpeg gerou um vídeo MP4 vazio.")
+    probe = json.loads(run([
+        "ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", str(output),
+    ]))
+    duration = round(float(probe["format"]["duration"]))
+    return size, duration
 
 
 def encode_mp3(source: Path, output: Path, start: int | None, end: int | None) -> tuple[int, int]:
@@ -366,8 +409,8 @@ def episode_date(details: dict[str, Any]) -> str:
     return format_datetime(date)
 
 
-def add_episode(channel: ET.Element, details: dict[str, Any], spec: dict[str, Any], audio_url: str,
-                size: int, duration: int) -> None:
+def add_episode(channel: ET.Element, details: dict[str, Any], spec: dict[str, Any], media_url: str,
+                size: int, duration: int, media_type: str = "audio/mpeg") -> None:
     video_id = details["id"]
     url = f"https://www.youtube.com/watch?v={video_id}"
     title = spec.get("title") or re.sub(r"^Culto ao vivo\s*[-–:]\s*", "", details.get("title", ""), flags=re.I)
@@ -380,7 +423,7 @@ def add_episode(channel: ET.Element, details: dict[str, Any], spec: dict[str, An
     guid = set_text(item, "guid", f"yt:{video_id}")
     guid.set("isPermaLink", "false")
     set_text(item, "pubDate", episode_date(details))
-    ET.SubElement(item, "enclosure", {"url": audio_url, "length": str(size), "type": "audio/mpeg"})
+    ET.SubElement(item, "enclosure", {"url": media_url, "length": str(size), "type": media_type})
     set_text(item, f"{{{ITUNES}}}duration", str(duration))
     set_text(item, f"{{{ITUNES}}}explicit", "false")
     first = channel.find("item")
@@ -434,6 +477,8 @@ def main() -> int:
     parser.add_argument("--start", help="Início do corte (HH:MM:SS ou segundos)")
     parser.add_argument("--end", help="Fim do corte (HH:MM:SS ou segundos)")
     parser.add_argument("--force", action="store_true", help="Publica sem corte mesmo se tiver mais de 75 min")
+    parser.add_argument("--format", choices=("audio", "video", "both"), default="audio",
+                        help="Formato de mídia a gerar (audio, video ou both)")
     parser.add_argument("--skip-artwork-check", action="store_true", help="Ignora verificação estrita da capa")
     parser.add_argument("--state", type=Path, default=Path("video_state.json"))
     args = parser.parse_args()
@@ -510,22 +555,53 @@ def main() -> int:
         else:
             raise
     client = r2_client()
-    update_channel(channel, feed_url, image_url, email)
     for spec, details in selected:
         video_id = details["id"]
         with tempfile.TemporaryDirectory(prefix="podcast-") as temp_dir:
             directory = Path(temp_dir)
-            source = download_audio(video_id, directory)
-            mp3 = directory / f"{video_id}.mp3"
-            size, duration = encode_mp3(source, mp3, spec.get("start_seconds"), spec.get("end_seconds"))
-            key = f"episodes/{video_id}.mp3"
-            client.upload_file(str(mp3), bucket, key, ExtraArgs={"ContentType": "audio/mpeg"})
-            audio_url = f"{public_domain}/{key}"
-            check_public_audio(audio_url, size)
-            add_episode(channel, details, spec, audio_url, size, duration)
-            LOG.info("Áudio publicado: %s", audio_url)
-    save_feed(root, args.feed)
-    LOG.info("Feed atualizado: %s", args.feed)
+            start_sec = spec.get("start_seconds")
+            end_sec = spec.get("end_seconds")
+
+            if args.format in ("video", "both"):
+                source_video = download_video(video_id, directory)
+                mp4 = directory / f"{video_id}.mp4"
+                v_size, v_duration = encode_mp4(source_video, mp4, start_sec, end_sec)
+                v_key = f"episodes/{video_id}.mp4"
+                client.upload_file(str(mp4), bucket, v_key, ExtraArgs={"ContentType": "video/mp4"})
+                v_url = f"{public_domain}/{v_key}"
+
+                vodcast_path = Path("vodcast.xml")
+                vroot, vchannel = load_feed(vodcast_path)
+                v_feed_url = feed_url.replace("podcast.xml", "vodcast.xml")
+                update_channel(vchannel, v_feed_url, image_url, email, title_suffix=" (Vídeo)")
+                add_episode(vchannel, details, spec, v_url, v_size, v_duration, media_type="video/mp4")
+                save_feed(vroot, vodcast_path)
+                LOG.info("Vídeo publicado: %s", v_url)
+
+                if args.format == "both":
+                    mp3 = directory / f"{video_id}.mp3"
+                    size, duration = encode_mp3(source_video, mp3, start_sec, end_sec)
+                    key = f"episodes/{video_id}.mp3"
+                    client.upload_file(str(mp3), bucket, key, ExtraArgs={"ContentType": "audio/mpeg"})
+                    audio_url = f"{public_domain}/{key}"
+                    update_channel(channel, feed_url, image_url, email)
+                    add_episode(channel, details, spec, audio_url, size, duration, media_type="audio/mpeg")
+                    save_feed(root, args.feed)
+                    LOG.info("Áudio publicado: %s", audio_url)
+
+            if args.format == "audio":
+                source = download_audio(video_id, directory)
+                mp3 = directory / f"{video_id}.mp3"
+                size, duration = encode_mp3(source, mp3, start_sec, end_sec)
+                key = f"episodes/{video_id}.mp3"
+                client.upload_file(str(mp3), bucket, key, ExtraArgs={"ContentType": "audio/mpeg"})
+                audio_url = f"{public_domain}/{key}"
+                update_channel(channel, feed_url, image_url, email)
+                add_episode(channel, details, spec, audio_url, size, duration, media_type="audio/mpeg")
+                save_feed(root, args.feed)
+                LOG.info("Áudio publicado: %s", audio_url)
+
+    LOG.info("Processamento concluído com sucesso.")
     if args.state.exists() and args.video_id:
         try:
             state = json.loads(args.state.read_text(encoding="utf-8"))

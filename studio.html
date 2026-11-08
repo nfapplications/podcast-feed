@@ -442,8 +442,11 @@
         <span class="badge-dot"></span>
         <span id="r2-status-text">Cloudflare R2: Conectado</span>
       </div>
-      <a href="podcast.xml" target="_blank" class="badge" style="text-decoration: none; color: inherit;" title="Ver Feed RSS XML">
-        <span>📡 Feed RSS</span>
+      <a href="podcast.xml" target="_blank" class="badge" style="text-decoration: none; color: inherit;" title="Ver Feed RSS de Áudio">
+        <span>🎵 Feed Áudio</span>
+      </a>
+      <a href="vodcast.xml" target="_blank" class="badge" style="text-decoration: none; color: inherit;" title="Ver Feed RSS de Vídeo">
+        <span>🎬 Feed Vídeo</span>
       </a>
     </div>
   </header>
@@ -526,6 +529,28 @@
             <div style="flex: 1;">
               <label for="cut-end-input">Fim (HH:MM:SS)</label>
               <input type="text" id="cut-end-input" placeholder="00:00:00" onchange="syncManualTimestamp()">
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top: 0.5rem;">
+            <label>Formato de Envio</label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem;">
+              <label style="display: flex; align-items: center; gap: 0.4rem; padding: 0.5rem 0.6rem; border: 1px solid var(--input-border); border-radius: 6px; cursor: pointer; background: var(--input-bg); font-size: 0.82rem;">
+                <input type="radio" name="media-format" value="audio" checked style="width: auto;">
+                <span>🎵 Áudio (MP3)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.4rem; padding: 0.5rem 0.6rem; border: 1px solid var(--input-border); border-radius: 6px; cursor: pointer; background: var(--input-bg); font-size: 0.82rem;">
+                <input type="radio" name="media-format" value="video" style="width: auto;">
+                <span>🎬 Vídeo (MP4)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.4rem; padding: 0.5rem 0.6rem; border: 1px solid var(--input-border); border-radius: 6px; cursor: pointer; background: var(--input-bg); font-size: 0.82rem;">
+                <input type="radio" name="media-format" value="both" style="width: auto;">
+                <span>🌟 Ambos</span>
+              </label>
+            </div>
+            <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 0.35rem;">
+              • <strong>Áudio:</strong> Gera <code>podcast.xml</code> (Spotify, Apple Podcasts, etc.)<br>
+              • <strong>Vídeo:</strong> Gera <code>vodcast.xml</code> (Apple Podcasts e reprodutores com suporte a vídeo)
             </div>
           </div>
 
@@ -628,8 +653,12 @@
           <input type="text" id="cfg-email" readonly>
         </div>
         <div>
-          <label>URL do Feed RSS</label>
+          <label>URL do Feed de Áudio (podcast.xml)</label>
           <input type="text" id="cfg-feed-url" readonly>
+        </div>
+        <div style="grid-column: 1 / -1;">
+          <label>URL do Feed de Vídeo / Vodcast (vodcast.xml)</label>
+          <input type="text" id="cfg-vodcast-url" readonly>
         </div>
       </div>
 
@@ -921,22 +950,37 @@
 
       tbody.innerHTML = list.map(ep => {
         const m = Math.floor((ep.duration || 0) / 60);
+        const isVideo = ep.format === 'video';
+        const badge = isVideo 
+          ? '<span class="badge" style="background: rgba(59, 130, 246, 0.15); color: var(--primary); border: 1px solid var(--primary); padding: 0.15rem 0.45rem; font-size: 0.7rem; margin-right: 0.4rem;">🎬 Vídeo (MP4)</span>'
+          : '<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid var(--success); padding: 0.15rem 0.45rem; font-size: 0.7rem; margin-right: 0.4rem;">🎵 Áudio (MP3)</span>';
+
+        const playerHtml = isVideo
+          ? `<video controls preload="metadata" style="width: 100%; max-height: 120px; border-radius: 6px; background: #000;">
+               <source src="${ep.media_url}" type="video/mp4">
+               Seu navegador não suporta reprodução de vídeo.
+             </video>`
+          : `<audio controls preload="none" style="width: 100%;">
+               <source src="${ep.media_url}" type="audio/mpeg">
+               Seu navegador não suporta reprodução de áudio.
+             </audio>`;
+
         return `
           <tr>
             <td>
-              <strong>${ep.title}</strong>
-              <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">${ep.pubDate}</div>
+              <div style="display: flex; align-items: center; margin-bottom: 0.25rem;">
+                ${badge}
+                <strong>${ep.title}</strong>
+              </div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">${ep.pubDate}</div>
             </td>
             <td>${m > 0 ? `${m} min` : '-'}</td>
-            <td>
-              <audio controls preload="none">
-                <source src="${ep.audio_url}" type="audio/mpeg">
-                Seu navegador não suporta reprodução de áudio.
-              </audio>
+            <td style="max-width: 320px;">
+              ${playerHtml}
             </td>
             <td>
-              <a href="${ep.audio_url}" target="_blank" download class="btn btn-outline" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;">
-                📥 Baixar MP3
+              <a href="${ep.media_url}" target="_blank" download class="btn btn-outline" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;">
+                📥 Baixar ${isVideo ? 'MP4' : 'MP3'}
               </a>
             </td>
           </tr>
@@ -953,6 +997,7 @@
     const start = document.getElementById('cut-start-input').value.trim();
     const end = document.getElementById('cut-end-input').value.trim();
     const gitPush = document.getElementById('git-push-check').checked;
+    const mediaFormat = document.querySelector('input[name="media-format"]:checked')?.value || "audio";
 
     if (!videoInput) {
       alert("Por favor, selecione ou informe o link/ID do vídeo!");
@@ -973,7 +1018,8 @@
           title: title,
           start: start || null,
           end: end || null,
-          git_push: gitPush
+          git_push: gitPush,
+          media_format: mediaFormat
         })
       });
 
@@ -1030,6 +1076,7 @@
       document.getElementById('cfg-r2-domain').value = cfg.R2_PUBLIC_DOMAIN || '';
       document.getElementById('cfg-email').value = cfg.PODCAST_EMAIL || '';
       document.getElementById('cfg-feed-url').value = cfg.PODCAST_FEED_URL || '';
+      document.getElementById('cfg-vodcast-url').value = cfg.VODCAST_FEED_URL || '';
       document.getElementById('guide-feed-url').textContent = cfg.PODCAST_FEED_URL || '';
     } catch (e) {}
   }

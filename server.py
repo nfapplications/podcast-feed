@@ -23,7 +23,10 @@ from typing import Any
 from processar_podcast import (
     add_episode,
     clean_text,
+    download_audio,
+    download_video,
     encode_mp3,
+    encode_mp4,
     existing_guids,
     https_url,
     load_env_file,
@@ -128,9 +131,16 @@ def fetch_channel_videos(limit: int = 10) -> list[dict[str, Any]]:
     return results
 
 
-def publish_worker(video_id: str, start_str: str | None, end_str: str | None, title_override: str | None, git_push: bool) -> None:
+def publish_worker(
+    video_id: str,
+    start_str: str | None,
+    end_str: str | None,
+    title_override: str | None,
+    git_push: bool,
+    media_format: str = "audio",  # "audio", "video", "both"
+) -> None:
     try:
-        set_task("running", f"Iniciando publicação do vídeo {video_id}...", 5, "Buscando detalhes do vídeo no YouTube...")
+        set_task("running", f"Iniciando publicação ({media_format}) do vídeo {video_id}...", 5, "Buscando detalhes do vídeo no YouTube...")
         details = video_details(video_id)
         video_title = title_override.strip() if title_override and title_override.strip() else details.get("title", video_id)
         set_task("running", f"Vídeo identificado: {video_title}", 15, f"Título: {video_title} (Duração original: {int(details.get('duration', 0)) // 60} min)")
@@ -147,40 +157,75 @@ def publish_worker(video_id: str, start_str: str | None, end_str: str | None, ti
 
         with tempfile.TemporaryDirectory(prefix="podcast-") as temp_dir:
             directory = Path(temp_dir)
-            set_task("running", "Baixando áudio do YouTube...", 25, f"Executando download do áudio de {video_id}...")
-            
-            # Download audio
-            from processar_podcast import download_audio
-            source = download_audio(video_id, directory)
-            set_task("running", "Normalizando áudio para -16 LUFS...", 50, "Download concluído. Processando FFmpeg loudnorm e MP3...")
-
-            mp3 = directory / f"{video_id}.mp3"
-            size, duration = encode_mp3(source, mp3, start_sec, end_sec)
-            set_task("running", f"Áudio gerado ({size // 1024 // 1024} MB, {duration // 60} min). Enviando ao R2...", 75, "Fazendo upload para o Cloudflare R2...")
-
-            # Upload to Cloudflare R2
             client = r2_client()
             bucket = required_env("R2_BUCKET_NAME")
-            key = f"episodes/{video_id}.mp3"
-            client.upload_file(str(mp3), bucket, key, ExtraArgs={"ContentType": "audio/mpeg"})
-            
             public_domain = https_url(required_env("R2_PUBLIC_DOMAIN"), "R2_PUBLIC_DOMAIN")
-            audio_url = f"{public_domain}/{key}"
-            set_task("running", "Atualizando feed RSS...", 90, f"Áudio publicado em {audio_url}. Atualizando podcast.xml...")
-
-            # Update RSS feed
-            feed_path = Path("podcast.xml")
-            root, channel = load_feed(feed_path)
-            feed_url = https_url(required_env("PODCAST_FEED_URL"), "PODCAST_FEED_URL")
+            feed_url_base = https_url(required_env("PODCAST_FEED_URL"), "PODCAST_FEED_URL")
             image_url = https_url(required_env("PODCAST_IMAGE_URL"), "PODCAST_IMAGE_URL")
             email = required_env("PODCAST_EMAIL")
-            update_channel(channel, feed_url, image_url, email)
-
             spec = {"video_id": video_id}
             if title_override and title_override.strip():
                 spec["title"] = title_override.strip()
-            add_episode(channel, details, spec, audio_url, size, duration)
-            save_feed(root, feed_path)
+
+            published_info: list[str] = []
+
+            if media_format in ("video", "both"):
+                set_task("running", "Baixando vídeo do YouTube...", 25, f"Baixando stream de vídeo de {video_id}...")
+                video_src = download_video(video_id, directory)
+
+                set_task("running", "Processando vídeo MP4 com FFmpeg...", 45, "Cortando e otimizando vídeo MP4 (+faststart)...")
+                mp4 = directory / f"{video_id}.mp4"
+                v_size, v_dur = encode_mp4(video_src, mp4, start_sec, end_sec)
+
+                set_task("running", f"Enviando vídeo ({v_size // 1024 // 1024} MB) para o Cloudflare R2...", 65, "Upload do vídeo MP4 para o Cloudflare R2...")
+                v_key = f"episodes/{video_id}.mp4"
+                client.upload_file(str(mp4), bucket, v_key, ExtraArgs={"ContentType": "video/mp4"})
+                v_url = f"{public_domain}/{v_key}"
+                published_info.append(f"Vídeo MP4: {v_url}")
+
+                vodcast_path = Path("vodcast.xml")
+                v_root, v_channel = load_feed(vodcast_path)
+                v_feed_url = feed_url_base.replace("podcast.xml", "vodcast.xml")
+                update_channel(v_channel, v_feed_url, image_url, email, title_suffix=" (Vídeo)")
+                add_episode(v_channel, details, spec, v_url, v_size, v_dur, media_type="video/mp4")
+                save_feed(v_root, vodcast_path)
+
+                if media_format == "both":
+                    set_task("running", "Normalizando áudio para -16 LUFS...", 75, "Extraindo áudio do vídeo para MP3 loudnorm...")
+                    mp3 = directory / f"{video_id}.mp3"
+                    a_size, a_dur = encode_mp3(video_src, mp3, start_sec, end_sec)
+
+                    set_task("running", f"Enviando áudio ({a_size // 1024 // 1024} MB) para o R2...", 85, "Upload do áudio MP3 para o Cloudflare R2...")
+                    a_key = f"episodes/{video_id}.mp3"
+                    client.upload_file(str(mp3), bucket, a_key, ExtraArgs={"ContentType": "audio/mpeg"})
+                    a_url = f"{public_domain}/{a_key}"
+                    published_info.append(f"Áudio MP3: {a_url}")
+
+                    feed_path = Path("podcast.xml")
+                    root, channel = load_feed(feed_path)
+                    update_channel(channel, feed_url_base, image_url, email)
+                    add_episode(channel, details, spec, a_url, a_size, a_dur, media_type="audio/mpeg")
+                    save_feed(root, feed_path)
+
+            else:
+                # Audio only
+                set_task("running", "Baixando áudio do YouTube...", 25, f"Executando download do áudio de {video_id}...")
+                audio_src = download_audio(video_id, directory)
+                set_task("running", "Normalizando áudio para -16 LUFS...", 50, "Processando FFmpeg loudnorm e MP3...")
+                mp3 = directory / f"{video_id}.mp3"
+                size, duration = encode_mp3(audio_src, mp3, start_sec, end_sec)
+
+                set_task("running", f"Áudio gerado ({size // 1024 // 1024} MB, {duration // 60} min). Enviando ao R2...", 75, "Fazendo upload para o Cloudflare R2...")
+                key = f"episodes/{video_id}.mp3"
+                client.upload_file(str(mp3), bucket, key, ExtraArgs={"ContentType": "audio/mpeg"})
+                audio_url = f"{public_domain}/{key}"
+                published_info.append(f"Áudio MP3: {audio_url}")
+
+                feed_path = Path("podcast.xml")
+                root, channel = load_feed(feed_path)
+                update_channel(channel, feed_url_base, image_url, email)
+                add_episode(channel, details, spec, audio_url, size, duration, media_type="audio/mpeg")
+                save_feed(root, feed_path)
 
             # Update video_state.json if exists
             state_path = Path("video_state.json")
@@ -195,15 +240,19 @@ def publish_worker(video_id: str, start_str: str | None, end_str: str | None, ti
 
             if git_push:
                 set_task("running", "Enviando alterações para o GitHub Pages...", 95, "Executando git commit e push...")
-                subprocess.run(["git", "add", "podcast.xml", "video_state.json"], check=False)
-                subprocess.run(["git", "commit", "-m", f"Publicar episódio {video_id}"], check=False)
+                files_to_commit = ["podcast.xml", "video_state.json"]
+                if Path("vodcast.xml").exists():
+                    files_to_commit.append("vodcast.xml")
+                subprocess.run(["git", "add"] + files_to_commit, check=False)
+                subprocess.run(["git", "commit", "-m", f"Publicar episódio {video_id} ({media_format})"], check=False)
                 push_res = subprocess.run(["git", "push"], capture_output=True, text=True, check=False)
                 if push_res.returncode == 0:
                     set_task("running", "GitHub Pages atualizado com sucesso!", 98, "Git push concluído com sucesso.")
                 else:
                     set_task("running", "Feed gerado localmente (push pendente).", 98, f"Aviso no git push: {push_res.stderr.strip()}")
 
-        set_task("success", f"Episódio '{video_title}' publicado com sucesso!", 100, f"Publicação finalizada com sucesso! URL: {audio_url}")
+        summary = " | ".join(published_info)
+        set_task("success", f"Episódio '{video_title}' publicado com sucesso!", 100, f"Publicação finalizada com sucesso! {summary}")
     except Exception as exc:
         LOG.exception("Erro ao publicar episódio: %s", exc)
         set_task("error", f"Falha na publicação: {exc}", 0, f"ERRO: {exc}", error=str(exc))
@@ -260,43 +309,50 @@ class StudioHandler(BaseHTTPRequestHandler):
 
         if path == "/api/config":
             load_env_file()
+            feed_url = os.environ.get("PODCAST_FEED_URL", "")
             self.send_json({
                 "R2_ACCOUNT_ID": os.environ.get("R2_ACCOUNT_ID", ""),
                 "R2_BUCKET_NAME": os.environ.get("R2_BUCKET_NAME", ""),
                 "R2_PUBLIC_DOMAIN": os.environ.get("R2_PUBLIC_DOMAIN", ""),
                 "PODCAST_EMAIL": os.environ.get("PODCAST_EMAIL", ""),
-                "PODCAST_FEED_URL": os.environ.get("PODCAST_FEED_URL", ""),
+                "PODCAST_FEED_URL": feed_url,
+                "VODCAST_FEED_URL": feed_url.replace("podcast.xml", "vodcast.xml"),
                 "PODCAST_IMAGE_URL": os.environ.get("PODCAST_IMAGE_URL", ""),
             })
             return
 
         if path == "/api/episodes":
-            feed_path = Path("podcast.xml")
-            if not feed_path.exists():
-                self.send_json([])
-                return
-            try:
-                root, channel = load_feed(feed_path)
-                episodes = []
-                for item in channel.findall("item"):
-                    guid = item.findtext("guid", default="")
-                    title = item.findtext("title", default="Sem título")
-                    desc = item.findtext("description", default="")
-                    pub_date = item.findtext("pubDate", default="")
-                    enclosure = item.find("enclosure")
-                    audio_url = enclosure.get("url", "") if enclosure is not None else ""
-                    duration = item.findtext("{http://www.itunes.com/dtds/podcast-1.0.dtd}duration", default="0")
-                    episodes.append({
-                        "guid": guid,
-                        "title": title,
-                        "description": desc,
-                        "pubDate": pub_date,
-                        "audio_url": audio_url,
-                        "duration": int(duration) if duration.isdigit() else 0,
-                    })
-                self.send_json(episodes)
-            except Exception as exc:
-                self.send_json({"error": str(exc)}, status=500)
+            episodes = []
+            feeds = [("podcast.xml", "audio"), ("vodcast.xml", "video")]
+            for f_name, f_type in feeds:
+                f_path = Path(f_name)
+                if not f_path.exists():
+                    continue
+                try:
+                    root, channel = load_feed(f_path)
+                    for item in channel.findall("item"):
+                        guid = item.findtext("guid", default="")
+                        title = item.findtext("title", default="Sem título")
+                        desc = item.findtext("description", default="")
+                        pub_date = item.findtext("pubDate", default="")
+                        enclosure = item.find("enclosure")
+                        media_url = enclosure.get("url", "") if enclosure is not None else ""
+                        media_type = enclosure.get("type", "audio/mpeg" if f_type == "audio" else "video/mp4") if enclosure is not None else ""
+                        duration = item.findtext("{http://www.itunes.com/dtds/podcast-1.0.dtd}duration", default="0")
+                        episodes.append({
+                            "guid": guid,
+                            "title": title,
+                            "description": desc,
+                            "pubDate": pub_date,
+                            "media_url": media_url,
+                            "media_type": media_type,
+                            "format": f_type,
+                            "duration": int(duration) if duration.isdigit() else 0,
+                        })
+                except Exception as exc:
+                    LOG.warning("Erro ao ler feed %s: %s", f_name, exc)
+
+            self.send_json(episodes)
             return
 
         self.send_error(404, "Recurso não encontrado.")
@@ -363,10 +419,11 @@ class StudioHandler(BaseHTTPRequestHandler):
             end_str = body.get("end")
             title_override = body.get("title")
             git_push = body.get("git_push", True)
+            media_format = body.get("media_format", "audio")  # "audio", "video", "both"
 
             thread = threading.Thread(
                 target=publish_worker,
-                args=(video_id, start_str, end_str, title_override, git_push),
+                args=(video_id, start_str, end_str, title_override, git_push, media_format),
                 daemon=True,
             )
             thread.start()

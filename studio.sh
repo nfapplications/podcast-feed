@@ -47,3 +47,4 @@ echo ""
 
 # Run server with .venv python
 exec .venv/bin/python3 server.py
+
