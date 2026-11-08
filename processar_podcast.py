@@ -323,14 +323,70 @@ def encode_mp4(source: Path, output: Path, start: int | None, end: int | None) -
     return size, duration
 
 
-def encode_mp3(source: Path, output: Path, start: int | None, end: int | None) -> tuple[int, int]:
-    command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(source)]
+def generate_episode_artwork(video_id: str, output_path: Path, custom_image_bytes: bytes | None = None) -> Path:
+    from PIL import Image, ImageFilter
+    if custom_image_bytes:
+        orig = Image.open(io.BytesIO(custom_image_bytes)).convert("RGB")
+    else:
+        thumb_url = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
+        req = urllib.request.Request(thumb_url, headers={"User-Agent": "Mozilla/5.0"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                thumb_data = resp.read()
+        except Exception:
+            thumb_url = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
+            with urllib.request.urlopen(urllib.request.Request(thumb_url, headers={"User-Agent": "Mozilla/5.0"}), timeout=10) as resp:
+                thumb_data = resp.read()
+        orig = Image.open(io.BytesIO(thumb_data)).convert("RGB")
+
+    ow, oh = orig.size
+    size = 2048
+    cover = Image.new("RGB", (size, size), color=(15, 23, 42))
+
+    # Background blurred fill
+    bg_fill = orig.resize((int(size * (ow / oh)), size), Image.Resampling.LANCZOS)
+    bg_fill_blurred = bg_fill.filter(ImageFilter.GaussianBlur(radius=40))
+    left = (bg_fill_blurred.width - size) // 2
+    bg_square = bg_fill_blurred.crop((left, 0, left + size, size))
+    cover.paste(bg_square, (0, 0))
+
+    # Foreground centered banner with sharp borders
+    fg_w = int(size * 0.94)
+    fg_h = int(fg_w * (oh / ow))
+    fg = orig.resize((fg_w, fg_h), Image.Resampling.LANCZOS)
+    pos_x = (size - fg_w) // 2
+    pos_y = (size - fg_h) // 2
+    cover.paste(fg, (pos_x, pos_y))
+
+    cover.save(output_path, format="JPEG", quality=90)
+    return output_path
+
+
+def encode_mp3(source: Path, output: Path, start: int | None, end: int | None, artwork_path: Path | None = None) -> tuple[int, int]:
+    command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
     if start is not None and end is not None:
         command += ["-ss", str(start), "-t", str(end - start)]
-    command += [
-        "-vn", "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-ac", "2", "-ar", "44100",
-        "-c:a", "libmp3lame", "-b:a", "128k", str(output),
-    ]
+    command += ["-i", str(source)]
+
+    if artwork_path and artwork_path.exists():
+        command += [
+            "-i", str(artwork_path),
+            "-map", "0:a", "-map", "1:v",
+            "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-ac", "2", "-ar", "44100",
+            "-c:a", "libmp3lame", "-b:a", "128k",
+            "-c:v", "copy", "-id3v2_version", "3",
+            "-metadata:s:v", 'title="Album cover"',
+            "-metadata:s:v", 'comment="Cover (front)"',
+            "-disposition:v:0", "attached_pic",
+            "-shortest",
+            str(output),
+        ]
+    else:
+        command += [
+            "-vn", "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-ac", "2", "-ar", "44100",
+            "-c:a", "libmp3lame", "-b:a", "128k", str(output),
+        ]
+
     run(command)
     size = output.stat().st_size
     if size == 0:
@@ -410,7 +466,7 @@ def episode_date(details: dict[str, Any]) -> str:
 
 
 def add_episode(channel: ET.Element, details: dict[str, Any], spec: dict[str, Any], media_url: str,
-                size: int, duration: int, media_type: str = "audio/mpeg") -> None:
+                size: int, duration: int, media_type: str = "audio/mpeg", image_url: str | None = None) -> None:
     video_id = details["id"]
     url = f"https://www.youtube.com/watch?v={video_id}"
     title = spec.get("title") or re.sub(r"^Culto ao vivo\s*[-–:]\s*", "", details.get("title", ""), flags=re.I)
@@ -426,6 +482,9 @@ def add_episode(channel: ET.Element, details: dict[str, Any], spec: dict[str, An
     ET.SubElement(item, "enclosure", {"url": media_url, "length": str(size), "type": media_type})
     set_text(item, f"{{{ITUNES}}}duration", str(duration))
     set_text(item, f"{{{ITUNES}}}explicit", "false")
+    if image_url:
+        ep_img = ET.SubElement(item, f"{{{ITUNES}}}image")
+        ep_img.set("href", image_url)
     first = channel.find("item")
     channel.insert(list(channel).index(first), item) if first is not None else channel.append(item)
 

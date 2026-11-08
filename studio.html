@@ -554,6 +554,40 @@
             </div>
           </div>
 
+          <!-- Episode Artwork Preview & Upload Card -->
+          <div class="card" style="margin-top: 0.75rem; border: 1px dashed var(--input-border); padding: 0.85rem;">
+            <div class="card-title" style="font-size: 0.9rem; margin-bottom: 0.5rem;">
+              <span>🖼️ Pré-visualização da Capa (1:1 Spotify & Apple)</span>
+              <span id="cover-source-badge" class="badge" style="font-size: 0.7rem; background: rgba(59, 130, 246, 0.15); color: var(--primary);">
+                Automática (YouTube 2048x2048)
+              </span>
+            </div>
+
+            <div style="display: flex; gap: 0.85rem; align-items: center; flex-wrap: wrap;">
+              <div style="position: relative; width: 110px; height: 110px; border-radius: 8px; overflow: hidden; background: #000; flex-shrink: 0; border: 1px solid var(--input-border); box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
+                <img id="episode-cover-preview" src="https://pub-782ee0b9c17b40bcae3d6d60d29ee756.r2.dev/cover.jpg" alt="Pré-visualização da capa" style="width: 100%; height: 100%; object-fit: cover;">
+                <div id="cover-loading-overlay" style="display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.7); align-items: center; justify-content: center; font-size: 0.7rem; color: #fff; text-align: center; padding: 4px;">
+                  Gerando 1:1...
+                </div>
+              </div>
+
+              <div style="flex: 1; min-width: 200px;">
+                <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.5rem; line-height: 1.35;">
+                  Gera automaticamente a capa quadrada com fundo harmônico. Você também pode escolher do disco ou <strong>colar (`Cmd+V` / `Ctrl+V`)</strong> uma imagem aqui!
+                </p>
+                <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                  <input type="file" id="cover-file-input" accept="image/*" style="display: none;" onchange="handleCoverFileSelect(event)">
+                  <button type="button" class="btn btn-outline" style="font-size: 0.75rem; padding: 0.35rem 0.65rem;" onclick="document.getElementById('cover-file-input').click()">
+                    📁 Escolher Arquivo
+                  </button>
+                  <button type="button" id="reset-cover-btn" class="btn btn-outline" style="font-size: 0.75rem; padding: 0.35rem 0.65rem; display: none;" onclick="resetToAutoCover()">
+                    🔄 Restaurar Automática
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="form-group" style="margin-top: 0.5rem;">
             <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; color: var(--text);">
               <input type="checkbox" id="git-push-check" checked style="width: auto;">
@@ -698,6 +732,88 @@
   let playerTimer = null;
   let pollStatusInterval = null;
   let channelVideosMap = {};
+  let currentCustomCoverB64 = null;
+
+  async function updateCoverPreview(forceAuto = false) {
+    const imgEl = document.getElementById('episode-cover-preview');
+    const badgeEl = document.getElementById('cover-source-badge');
+    const resetBtn = document.getElementById('reset-cover-btn');
+    const loadingOverlay = document.getElementById('cover-loading-overlay');
+
+    if (currentCustomCoverB64 && !forceAuto) {
+      imgEl.src = currentCustomCoverB64;
+      badgeEl.textContent = "Personalizada (Arquivo / Colada)";
+      badgeEl.style.color = "var(--success)";
+      badgeEl.style.background = "rgba(16, 185, 129, 0.15)";
+      resetBtn.style.display = "inline-flex";
+      return;
+    }
+
+    if (currentVideoId) {
+      if (loadingOverlay) loadingOverlay.style.display = "flex";
+      try {
+        const res = await fetch('/api/preview-cover', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ video_id: currentVideoId })
+        });
+        const data = await res.json();
+        if (data.ok && data.preview_url) {
+          imgEl.src = data.preview_url;
+          badgeEl.textContent = "Automática (YouTube 2048x2048)";
+          badgeEl.style.color = "var(--primary)";
+          badgeEl.style.background = "rgba(59, 130, 246, 0.15)";
+          resetBtn.style.display = "none";
+        }
+      } catch (e) {
+        console.warn("Cover preview error:", e);
+      } finally {
+        if (loadingOverlay) loadingOverlay.style.display = "none";
+      }
+    }
+  }
+
+  function handleCoverFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      currentCustomCoverB64 = e.target.result;
+      updateCoverPreview();
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function resetToAutoCover() {
+    currentCustomCoverB64 = null;
+    const fileInput = document.getElementById('cover-file-input');
+    if (fileInput) fileInput.value = "";
+    updateCoverPreview(true);
+  }
+
+  // Global Paste listener (Cmd+V / Ctrl+V image)
+  window.addEventListener('paste', (event) => {
+    const items = (event.clipboardData || event.originalEvent?.clipboardData)?.items;
+    if (!items) return;
+    for (let item of items) {
+      if (item.kind === 'file' && item.type.startsWith('image/')) {
+        const blob = item.getAsFile();
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          currentCustomCoverB64 = e.target.result;
+          updateCoverPreview();
+          const badgeEl = document.getElementById('cover-source-badge');
+          if (badgeEl) {
+            badgeEl.textContent = "✅ Imagem colada com sucesso!";
+            badgeEl.style.color = "var(--success)";
+          }
+        };
+        reader.readAsDataURL(blob);
+        event.preventDefault();
+        break;
+      }
+    }
+  });
 
   function parseVideoId(input) {
     if (!input) return "";
@@ -864,6 +980,8 @@
     }
 
     resetCut();
+    currentCustomCoverB64 = null;
+    updateCoverPreview();
     switchTab('studio');
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
@@ -1019,7 +1137,8 @@
           start: start || null,
           end: end || null,
           git_push: gitPush,
-          media_format: mediaFormat
+          media_format: mediaFormat,
+          custom_cover: currentCustomCoverB64
         })
       });
 
@@ -1105,6 +1224,7 @@
   loadConfig();
   loadFeedEpisodes();
   loadChannelVideos();
+  updateCoverPreview();
 </script>
 
 </body>

@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import base64
+import io
 import json
 import logging
 import os
@@ -28,6 +30,7 @@ from processar_podcast import (
     encode_mp3,
     encode_mp4,
     existing_guids,
+    generate_episode_artwork,
     https_url,
     load_env_file,
     load_feed,
@@ -138,6 +141,7 @@ def publish_worker(
     title_override: str | None,
     git_push: bool,
     media_format: str = "audio",  # "audio", "video", "both"
+    custom_cover_b64: str | None = None,
 ) -> None:
     try:
         set_task("running", f"Iniciando publicação ({media_format}) do vídeo {video_id}...", 5, "Buscando detalhes do vídeo no YouTube...")
@@ -169,15 +173,35 @@ def publish_worker(
 
             published_info: list[str] = []
 
+            # 1. Generate square episode artwork (2048x2048)
+            set_task("running", "Gerando capa quadrada do episódio (2048x2048)...", 20, "Processando arte oficial do episódio para Spotify e Apple Podcasts...")
+            custom_bytes = None
+            if custom_cover_b64:
+                try:
+                    c_data = custom_cover_b64
+                    if "," in c_data:
+                        c_data = c_data.split(",", 1)[1]
+                    custom_bytes = base64.b64decode(c_data)
+                except Exception as e:
+                    LOG.warning("Erro ao decodificar capa personalizada: %s", e)
+
+            art_file = directory / f"{video_id}.jpg"
+            generate_episode_artwork(video_id, art_file, custom_image_bytes=custom_bytes)
+
+            art_key = f"episodes/{video_id}.jpg"
+            client.upload_file(str(art_file), bucket, art_key, ExtraArgs={"ContentType": "image/jpeg"})
+            ep_image_url = f"{public_domain}/{art_key}"
+            published_info.append(f"Capa: {ep_image_url}")
+
             if media_format in ("video", "both"):
-                set_task("running", "Baixando vídeo do YouTube...", 25, f"Baixando stream de vídeo de {video_id}...")
+                set_task("running", "Baixando vídeo do YouTube...", 30, f"Baixando stream de vídeo de {video_id}...")
                 video_src = download_video(video_id, directory)
 
-                set_task("running", "Processando vídeo MP4 com FFmpeg...", 45, "Cortando e otimizando vídeo MP4 (+faststart)...")
+                set_task("running", "Processando vídeo MP4 com FFmpeg...", 50, "Cortando e otimizando vídeo MP4 (+faststart)...")
                 mp4 = directory / f"{video_id}.mp4"
                 v_size, v_dur = encode_mp4(video_src, mp4, start_sec, end_sec)
 
-                set_task("running", f"Enviando vídeo ({v_size // 1024 // 1024} MB) para o Cloudflare R2...", 65, "Upload do vídeo MP4 para o Cloudflare R2...")
+                set_task("running", f"Enviando vídeo ({v_size // 1024 // 1024} MB) para o Cloudflare R2...", 70, "Upload do vídeo MP4 para o Cloudflare R2...")
                 v_key = f"episodes/{video_id}.mp4"
                 client.upload_file(str(mp4), bucket, v_key, ExtraArgs={"ContentType": "video/mp4"})
                 v_url = f"{public_domain}/{v_key}"
@@ -187,15 +211,15 @@ def publish_worker(
                 v_root, v_channel = load_feed(vodcast_path)
                 v_feed_url = feed_url_base.replace("podcast.xml", "vodcast.xml")
                 update_channel(v_channel, v_feed_url, image_url, email, title_suffix=" (Vídeo)")
-                add_episode(v_channel, details, spec, v_url, v_size, v_dur, media_type="video/mp4")
+                add_episode(v_channel, details, spec, v_url, v_size, v_dur, media_type="video/mp4", image_url=ep_image_url)
                 save_feed(v_root, vodcast_path)
 
                 if media_format == "both":
-                    set_task("running", "Normalizando áudio para -16 LUFS...", 75, "Extraindo áudio do vídeo para MP3 loudnorm...")
+                    set_task("running", "Normalizando áudio para -16 LUFS...", 80, "Extraindo áudio do vídeo para MP3 com capa embutida...")
                     mp3 = directory / f"{video_id}.mp3"
-                    a_size, a_dur = encode_mp3(video_src, mp3, start_sec, end_sec)
+                    a_size, a_dur = encode_mp3(video_src, mp3, start_sec, end_sec, artwork_path=art_file)
 
-                    set_task("running", f"Enviando áudio ({a_size // 1024 // 1024} MB) para o R2...", 85, "Upload do áudio MP3 para o Cloudflare R2...")
+                    set_task("running", f"Enviando áudio ({a_size // 1024 // 1024} MB) para o R2...", 90, "Upload do áudio MP3 para o Cloudflare R2...")
                     a_key = f"episodes/{video_id}.mp3"
                     client.upload_file(str(mp3), bucket, a_key, ExtraArgs={"ContentType": "audio/mpeg"})
                     a_url = f"{public_domain}/{a_key}"
@@ -204,16 +228,16 @@ def publish_worker(
                     feed_path = Path("podcast.xml")
                     root, channel = load_feed(feed_path)
                     update_channel(channel, feed_url_base, image_url, email)
-                    add_episode(channel, details, spec, a_url, a_size, a_dur, media_type="audio/mpeg")
+                    add_episode(channel, details, spec, a_url, a_size, a_dur, media_type="audio/mpeg", image_url=ep_image_url)
                     save_feed(root, feed_path)
 
             else:
                 # Audio only
-                set_task("running", "Baixando áudio do YouTube...", 25, f"Executando download do áudio de {video_id}...")
+                set_task("running", "Baixando áudio do YouTube...", 30, f"Executando download do áudio de {video_id}...")
                 audio_src = download_audio(video_id, directory)
-                set_task("running", "Normalizando áudio para -16 LUFS...", 50, "Processando FFmpeg loudnorm e MP3...")
+                set_task("running", "Normalizando áudio para -16 LUFS com capa embutida...", 55, "Processando FFmpeg loudnorm e MP3...")
                 mp3 = directory / f"{video_id}.mp3"
-                size, duration = encode_mp3(audio_src, mp3, start_sec, end_sec)
+                size, duration = encode_mp3(audio_src, mp3, start_sec, end_sec, artwork_path=art_file)
 
                 set_task("running", f"Áudio gerado ({size // 1024 // 1024} MB, {duration // 60} min). Enviando ao R2...", 75, "Fazendo upload para o Cloudflare R2...")
                 key = f"episodes/{video_id}.mp3"
@@ -224,7 +248,7 @@ def publish_worker(
                 feed_path = Path("podcast.xml")
                 root, channel = load_feed(feed_path)
                 update_channel(channel, feed_url_base, image_url, email)
-                add_episode(channel, details, spec, audio_url, size, duration, media_type="audio/mpeg")
+                add_episode(channel, details, spec, audio_url, size, duration, media_type="audio/mpeg", image_url=ep_image_url)
                 save_feed(root, feed_path)
 
             # Update video_state.json if exists
@@ -400,6 +424,26 @@ class StudioHandler(BaseHTTPRequestHandler):
                 self.send_json({"ok": False, "error": str(exc)}, status=400)
             return
 
+        if path == "/api/preview-cover":
+            raw_id = body.get("video_id", "")
+            custom_cover_b64 = body.get("custom_cover")
+            try:
+                video_id = parse_video_id(raw_id)
+                custom_bytes = None
+                if custom_cover_b64:
+                    c_data = custom_cover_b64
+                    if "," in c_data:
+                        c_data = c_data.split(",", 1)[1]
+                    custom_bytes = base64.b64decode(c_data)
+                with tempfile.TemporaryDirectory() as td:
+                    art_file = Path(td) / "cover_preview.jpg"
+                    generate_episode_artwork(video_id, art_file, custom_image_bytes=custom_bytes)
+                    b64_str = base64.b64encode(art_file.read_bytes()).decode("ascii")
+                    self.send_json({"ok": True, "preview_url": f"data:image/jpeg;base64,{b64_str}"})
+            except Exception as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=400)
+            return
+
         if path == "/api/publish":
             with TASK_LOCK:
                 if CURRENT_TASK["status"] == "running":
@@ -420,10 +464,11 @@ class StudioHandler(BaseHTTPRequestHandler):
             title_override = body.get("title")
             git_push = body.get("git_push", True)
             media_format = body.get("media_format", "audio")  # "audio", "video", "both"
+            custom_cover_b64 = body.get("custom_cover")
 
             thread = threading.Thread(
                 target=publish_worker,
-                args=(video_id, start_str, end_str, title_override, git_push, media_format),
+                args=(video_id, start_str, end_str, title_override, git_push, media_format, custom_cover_b64),
                 daemon=True,
             )
             thread.start()
