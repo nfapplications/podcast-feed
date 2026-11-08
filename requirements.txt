@@ -1,3 +1,4 @@
 boto3>=1.35,<2
 Pillow>=11,<13
 yt-dlp
+playwright>=1.40

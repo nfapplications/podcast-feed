@@ -10,6 +10,13 @@ from processar_podcast import (
     update_channel,
 )
 from scan_videos import classify
+from server import parse_video_id
+from spotify_uploader import (
+    cancel_spotify_upload,
+    confirm_login,
+    get_spotify_state,
+    set_spotify_state,
+)
 
 
 class PodcastTests(unittest.TestCase):
@@ -77,6 +84,23 @@ class PodcastTests(unittest.TestCase):
         self.assertEqual(enclosure.get("type"), "video/mp4")
         self.assertEqual(enclosure.get("url"), "https://audio.exemplo.com/episodes/5CyVFrCs5Pk.mp4")
         self.assertIn("Vídeo", channel.findtext("title", ""))
+
+    def test_parse_video_id_variations(self):
+        self.assertEqual(parse_video_id("5CyVFrCs5Pk"), "5CyVFrCs5Pk")
+        self.assertEqual(parse_video_id("https://www.youtube.com/watch?v=5CyVFrCs5Pk"), "5CyVFrCs5Pk")
+        self.assertEqual(parse_video_id("https://youtu.be/5CyVFrCs5Pk?t=10"), "5CyVFrCs5Pk")
+        self.assertEqual(parse_video_id("https://www.youtube.com/live/5CyVFrCs5Pk"), "5CyVFrCs5Pk")
+
+    def test_spotify_state_and_login_events(self):
+        set_spotify_state("waiting_login", "Aguardando login de teste...")
+        state = get_spotify_state()
+        self.assertEqual(state["status"], "waiting_login")
+        self.assertIn("login", state["message"].lower())
+
+        confirm_login()
+        cancel_spotify_upload()
+        state_after = get_spotify_state()
+        self.assertEqual(state_after["status"], "idle")
 
 
 if __name__ == "__main__":

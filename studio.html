@@ -238,6 +238,14 @@
     .btn-success { background: var(--success); color: #fff; }
     .btn-success:hover { background: var(--success-hover); }
     .btn-danger { background: var(--danger); color: #fff; }
+    .btn-spotify { background: #1db954; color: #fff; border: none; }
+    .btn-spotify:hover { background: #1ed760; color: #fff; }
+    .spotify-card {
+      background: linear-gradient(180deg, rgba(29, 185, 84, 0.06) 0%, var(--card-bg) 100%);
+      border: 1px solid rgba(29, 185, 84, 0.35);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+    }
     .btn-outline {
       background: transparent;
       border: 1px solid var(--card-border);
@@ -609,6 +617,94 @@
               <div id="progress-fill" class="progress-bar-fill"></div>
             </div>
             <div id="terminal-box" class="terminal-logs"></div>
+          </div>
+
+          <!-- Card de Publicação de Vídeo no Spotify (Opções A e B) -->
+          <div id="spotify-card" class="spotify-card" style="margin-top: 1.5rem; display: none;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+              <div style="display: flex; align-items: center; gap: 0.6rem;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="#1db954"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.508 17.308c-.22.36-.688.473-1.047.253-2.868-1.752-6.478-2.148-10.732-1.176-.41.094-.814-.162-.907-.573-.094-.41.162-.813.573-.907 4.656-1.064 8.653-.615 11.86 1.344.36.22.473.687.253 1.059zm1.47-3.267c-.277.45-.866.593-1.316.316-3.284-2.018-8.29-2.602-12.176-1.423-.507.154-1.043-.135-1.197-.643-.154-.508.135-1.044.643-1.198 4.444-1.348 9.957-.698 13.73 1.622.45.277.593.866.316 1.326zm.126-3.41c-3.938-2.338-10.435-2.553-14.218-1.404-.604.183-1.246-.16-1.43-.764-.183-.604.16-1.246.764-1.43 4.337-1.317 11.51-1.07 16.038 1.616.544.323.723 1.03.4 1.574-.323.543-1.03.722-1.574.402z"/></svg>
+                <strong style="font-size: 1.05rem; color: var(--text);">Publicação de Vídeo no Spotify</strong>
+              </div>
+              <span class="badge" style="background: rgba(29, 185, 84, 0.15); color: #1db954; border-color: rgba(29, 185, 84, 0.3);">
+                Spotify for Creators
+              </span>
+            </div>
+            
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+              O Spotify exige envio do vídeo MP4 via <strong>Spotify for Creators</strong>. Escolha a opção de sua preferência:
+            </p>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
+              <!-- OPÇÃO A: ASSISTIDA -->
+              <div style="background: var(--code-bg); border: 1px solid var(--code-border); border-radius: var(--radius); padding: 1.1rem; display: flex; flex-direction: column; justify-content: space-between;">
+                <div>
+                  <div style="font-weight: 700; font-size: 0.95rem; margin-bottom: 0.4rem; display: flex; align-items: center; justify-content: space-between;">
+                    <span>📋 Opção A: Assistida</span>
+                    <span class="badge" style="font-size: 0.65rem;">Manual Rápido</span>
+                  </div>
+                  <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.85rem;">
+                    Baixe os arquivos prontos e copie título/descrição com 1 clique para colar no painel oficial do Spotify.
+                  </p>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 0.45rem;">
+                  <a id="btn-download-mp4" href="#" target="_blank" download class="btn btn-outline" style="font-size: 0.8rem; padding: 0.5rem;">
+                    📥 Baixar Vídeo MP4
+                  </a>
+                  <a id="btn-download-cover" href="#" target="_blank" download class="btn btn-outline" style="font-size: 0.8rem; padding: 0.5rem;">
+                    🖼️ Baixar Capa Quadrada (JPG)
+                  </a>
+                  <button type="button" class="btn btn-outline" style="font-size: 0.8rem; padding: 0.5rem;" onclick="copyEpisodeMetadata()">
+                    📋 Copiar Título & Texto
+                  </button>
+                  <a href="https://podcasters.spotify.com/pod/dashboard/episode/wizard" target="_blank" rel="noopener" class="btn btn-spotify" style="font-size: 0.82rem; padding: 0.55rem; text-decoration: none;">
+                    🚀 Abrir Spotify for Creators ↗
+                  </a>
+                </div>
+              </div>
+
+              <!-- OPÇÃO B: ROBÔ PLAYWRIGHT -->
+              <div style="background: var(--code-bg); border: 1px solid var(--code-border); border-radius: var(--radius); padding: 1.1rem; display: flex; flex-direction: column; justify-content: space-between;">
+                <div>
+                  <div style="font-weight: 700; font-size: 0.95rem; margin-bottom: 0.4rem; display: flex; align-items: center; justify-content: space-between;">
+                    <span>🤖 Opção B: Robô Playwright</span>
+                    <span class="badge" style="font-size: 0.65rem; background: rgba(59, 130, 246, 0.15); color: var(--primary); border-color: rgba(59, 130, 246, 0.3);">100% Automático</span>
+                  </div>
+                  <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.85rem;">
+                    Abre o Google Chrome visível, loga na sua conta, envia o arquivo MP4 e preenche os detalhes sozinho.
+                  </p>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 0.45rem;">
+                  <button type="button" id="btn-start-spotify-robot" class="btn btn-spotify" style="font-size: 0.85rem; padding: 0.6rem; font-weight: 700;" onclick="startSpotifyRobot()">
+                    🤖 Iniciar Envio no Spotify
+                  </button>
+
+                  <div id="spotify-robot-status-box" style="display: none; padding: 0.75rem; border-radius: 6px; background: var(--card-bg); border: 1px solid var(--card-border); margin-top: 0.4rem;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.35rem;">
+                      <span style="font-size: 0.75rem; font-weight: 600; color: var(--text);">Status do Robô:</span>
+                      <span id="spotify-robot-badge" class="badge" style="font-size: 0.65rem;">Iniciando...</span>
+                    </div>
+                    <div id="spotify-robot-msg" style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.4;"></div>
+
+                    <!-- Caixa de confirmação de login solicitada pelo usuário -->
+                    <div id="spotify-login-action-box" style="display: none; margin-top: 0.65rem; padding: 0.65rem; background: rgba(245, 158, 11, 0.12); border: 1px solid var(--warning); border-radius: 6px;">
+                      <div style="font-size: 0.78rem; color: var(--warning); font-weight: 600; margin-bottom: 0.45rem; line-height: 1.3;">
+                        🔑 Janela do Google Chrome aberta! Faça seu login no Spotify e depois clique abaixo:
+                      </div>
+                      <button type="button" class="btn btn-success" style="width: 100%; font-size: 0.8rem; padding: 0.5rem;" onclick="confirmSpotifyLogin()">
+                        ✅ Já fiz o Login, Continuar Envio!
+                      </button>
+                    </div>
+
+                    <button type="button" id="btn-cancel-spotify-robot" class="btn btn-outline" style="width: 100%; font-size: 0.72rem; padding: 0.35rem; margin-top: 0.5rem; color: var(--danger); border-color: rgba(239, 68, 68, 0.3);" onclick="cancelSpotifyRobot()">
+                      ⏹️ Cancelar Robô
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -982,6 +1078,7 @@
     resetCut();
     currentCustomCoverB64 = null;
     updateCoverPreview();
+    updateSpotifyCardUrls(id, title);
     switchTab('studio');
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
@@ -1097,9 +1194,12 @@
               ${playerHtml}
             </td>
             <td>
-              <a href="${ep.media_url}" target="_blank" download class="btn btn-outline" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;">
-                📥 Baixar ${isVideo ? 'MP4' : 'MP3'}
-              </a>
+              <div style="display: flex; gap: 0.35rem; flex-wrap: wrap;">
+                <a href="${ep.media_url}" target="_blank" download class="btn btn-outline" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;">
+                  📥 Baixar ${isVideo ? 'MP4' : 'MP3'}
+                </a>
+                ${isVideo ? `<button type="button" class="btn btn-spotify" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;" onclick="loadVideo('${ep.guid}', '${(ep.title||'').replace(/'/g, "\\'")}'); switchTab('studio');">🎙️ Spotify</button>` : ''}
+              </div>
             </td>
           </tr>
         `;
@@ -1180,11 +1280,185 @@
         if (data.status === 'success') {
           loadFeedEpisodes();
           loadChannelVideos();
+          if (data.video_id) {
+            updateSpotifyCardUrls(data.video_id, data.title);
+            const card = document.getElementById('spotify-card');
+            if (card) {
+              card.scrollIntoView({ behavior: 'smooth' });
+            }
+          }
         }
       }
     } catch (e) {
       console.error("Status polling error", e);
     }
+  }
+
+  // --- SPOTIFY VIDEO AUTOMATION & ASSISTED UPLOAD ---
+  let spotifyPollInterval = null;
+
+  function showToast(text, isError = false) {
+    const toast = document.getElementById('toast-msg');
+    if (!toast) return;
+    toast.textContent = text;
+    toast.style.background = isError ? 'var(--danger)' : 'var(--success)';
+    toast.style.display = 'block';
+    toast.style.opacity = '1';
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      setTimeout(() => { toast.style.display = 'none'; }, 300);
+    }, 2500);
+  }
+
+  function updateSpotifyCardUrls(videoId, customTitle) {
+    const card = document.getElementById('spotify-card');
+    if (!card) return;
+    card.style.display = 'block';
+
+    const btnMp4 = document.getElementById('btn-download-mp4');
+    const btnCover = document.getElementById('btn-download-cover');
+    if (btnMp4) btnMp4.href = `/exports/${videoId}.mp4?download=1`;
+    if (btnCover) btnCover.href = `/exports/${videoId}.jpg?download=1`;
+  }
+
+  async function copyEpisodeMetadata() {
+    const title = document.getElementById('episode-title')?.value.trim() || "";
+    const vInput = document.getElementById('video-input')?.value.trim() || "";
+    const vId = parseVideoId(vInput) || currentVideoId || "";
+
+    const clipText = `${title}\n\nVídeo oficial: https://www.youtube.com/watch?v=${vId}\n\nPregação gravada ao vivo na Igreja Núcleo da Fé.`;
+
+    try {
+      await navigator.clipboard.writeText(clipText);
+      showToast("📋 Título e texto copiados com sucesso!");
+    } catch (err) {
+      showToast("Erro ao copiar para a área de transferência.", true);
+    }
+  }
+
+  async function startSpotifyRobot(overrideVideoId) {
+    const vInput = overrideVideoId || document.getElementById('video-input')?.value.trim();
+    const vId = parseVideoId(vInput) || currentVideoId;
+    if (!vId) {
+      alert("Por favor, selecione um episódio ou informe o ID do vídeo primeiro!");
+      return;
+    }
+
+    const title = document.getElementById('episode-title')?.value.trim();
+    const statusBox = document.getElementById('spotify-robot-status-box');
+    const badge = document.getElementById('spotify-robot-badge');
+    const msg = document.getElementById('spotify-robot-msg');
+    const btnStart = document.getElementById('btn-start-spotify-robot');
+
+    statusBox.style.display = 'block';
+    btnStart.disabled = true;
+    badge.textContent = "Conectando...";
+    badge.style.background = "rgba(59, 130, 246, 0.15)";
+    badge.style.color = "var(--primary)";
+    msg.textContent = "Iniciando robô Playwright...";
+
+    try {
+      const res = await fetch('/api/spotify-start-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_id: vId, title: title })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert("Aviso: " + (data.error || "Não foi possível iniciar o robô."));
+        btnStart.disabled = false;
+        return;
+      }
+
+      if (spotifyPollInterval) clearInterval(spotifyPollInterval);
+      spotifyPollInterval = setInterval(pollSpotifyStatus, 1500);
+      pollSpotifyStatus();
+    } catch (err) {
+      alert("Erro na requisição: " + err.message);
+      btnStart.disabled = false;
+    }
+  }
+
+  async function pollSpotifyStatus() {
+    try {
+      const res = await fetch('/api/spotify-status');
+      const data = await res.json();
+      const badge = document.getElementById('spotify-robot-badge');
+      const msg = document.getElementById('spotify-robot-msg');
+      const loginBox = document.getElementById('spotify-login-action-box');
+      const btnStart = document.getElementById('btn-start-spotify-robot');
+
+      if (msg) msg.textContent = data.message || "";
+
+      if (data.status === 'waiting_login') {
+        badge.textContent = "🔑 Aguardando Login";
+        badge.style.background = "rgba(245, 158, 11, 0.15)";
+        badge.style.color = "var(--warning)";
+        if (loginBox) loginBox.style.display = 'block';
+      } else {
+        if (loginBox) loginBox.style.display = 'none';
+      }
+
+      if (data.status === 'opening_browser' || data.status === 'preparing') {
+        badge.textContent = "🌐 Preparando";
+        badge.style.background = "rgba(59, 130, 246, 0.15)";
+        badge.style.color = "var(--primary)";
+      } else if (data.status === 'uploading') {
+        badge.textContent = "📤 Enviando Vídeo";
+        badge.style.background = "rgba(16, 185, 129, 0.15)";
+        badge.style.color = "var(--success)";
+      } else if (data.status === 'filling_details') {
+        badge.textContent = "✍️ Preenchendo Título";
+        badge.style.background = "rgba(59, 130, 246, 0.15)";
+        badge.style.color = "var(--primary)";
+      } else if (data.status === 'ready_for_review') {
+        badge.textContent = "✅ Pronto no Chrome";
+        badge.style.background = "rgba(16, 185, 129, 0.15)";
+        badge.style.color = "var(--success)";
+        btnStart.disabled = false;
+      } else if (data.status === 'idle') {
+        badge.textContent = "Disponível";
+        btnStart.disabled = false;
+        if (spotifyPollInterval) {
+          clearInterval(spotifyPollInterval);
+          spotifyPollInterval = null;
+        }
+      } else if (data.status === 'error') {
+        badge.textContent = "❌ Erro";
+        badge.style.background = "rgba(239, 68, 68, 0.15)";
+        badge.style.color = "var(--danger)";
+        btnStart.disabled = false;
+        if (spotifyPollInterval) {
+          clearInterval(spotifyPollInterval);
+          spotifyPollInterval = null;
+        }
+      }
+    } catch (e) {
+      console.error("Erro ao consultar status do robô Spotify:", e);
+    }
+  }
+
+  async function confirmSpotifyLogin() {
+    try {
+      const res = await fetch('/api/spotify-confirm-login', { method: 'POST' });
+      const data = await res.json();
+      if (data.ok) {
+        showToast("✅ Login confirmado! O robô continuará o envio...");
+        const loginBox = document.getElementById('spotify-login-action-box');
+        if (loginBox) loginBox.style.display = 'none';
+        pollSpotifyStatus();
+      }
+    } catch (err) {
+      showToast("Erro ao confirmar login: " + err.message, true);
+    }
+  }
+
+  async function cancelSpotifyRobot() {
+    try {
+      await fetch('/api/spotify-cancel', { method: 'POST' });
+      showToast("Robô Spotify cancelado.");
+      pollSpotifyStatus();
+    } catch (err) {}
   }
 
   async function loadConfig() {
@@ -1226,6 +1500,10 @@
   loadChannelVideos();
   updateCoverPreview();
 </script>
+
+<div id="toast-msg" style="position: fixed; bottom: 2rem; right: 2rem; background: var(--success); color: #fff; padding: 0.75rem 1.25rem; border-radius: 8px; font-weight: 600; font-size: 0.9rem; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 99999; display: none; transition: opacity 0.3s ease;">
+  Copiado com sucesso!
+</div>
 
 </body>
 </html>

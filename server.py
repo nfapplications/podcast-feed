@@ -41,6 +41,12 @@ from processar_podcast import (
     update_channel,
     video_details,
 )
+from spotify_uploader import (
+    cancel_spotify_upload,
+    confirm_login,
+    get_spotify_state,
+    run_spotify_upload,
+)
 
 LOG = logging.getLogger("studio")
 load_env_file()
@@ -51,11 +57,33 @@ CURRENT_TASK: dict[str, Any] = {
     "progress": 0,
     "logs": [],
     "error": None,
+    "video_url": None,
+    "audio_url": None,
+    "video_id": None,
+    "title": None,
+    "description": None,
+    "local_mp4": None,
+    "local_art": None,
+    "local_mp3": None,
 }
 TASK_LOCK = threading.Lock()
 
 
-def set_task(status: str, message: str, progress: int = 0, log_line: str | None = None, error: str | None = None) -> None:
+def set_task(
+    status: str,
+    message: str,
+    progress: int = 0,
+    log_line: str | None = None,
+    error: str | None = None,
+    video_url: str | None = None,
+    audio_url: str | None = None,
+    video_id: str | None = None,
+    title: str | None = None,
+    description: str | None = None,
+    local_mp4: str | None = None,
+    local_art: str | None = None,
+    local_mp3: str | None = None,
+) -> None:
     with TASK_LOCK:
         CURRENT_TASK["status"] = status
         CURRENT_TASK["message"] = message
@@ -64,6 +92,22 @@ def set_task(status: str, message: str, progress: int = 0, log_line: str | None 
             CURRENT_TASK["logs"].append(f"[{time.strftime('%H:%M:%S')}] {log_line}")
         if error:
             CURRENT_TASK["error"] = error
+        if video_url is not None:
+            CURRENT_TASK["video_url"] = video_url
+        if audio_url is not None:
+            CURRENT_TASK["audio_url"] = audio_url
+        if video_id is not None:
+            CURRENT_TASK["video_id"] = video_id
+        if title is not None:
+            CURRENT_TASK["title"] = title
+        if description is not None:
+            CURRENT_TASK["description"] = description
+        if local_mp4 is not None:
+            CURRENT_TASK["local_mp4"] = local_mp4
+        if local_art is not None:
+            CURRENT_TASK["local_art"] = local_art
+        if local_mp3 is not None:
+            CURRENT_TASK["local_mp3"] = local_mp3
 
 
 def parse_video_id(input_str: str) -> str:
@@ -172,6 +216,8 @@ def publish_worker(
                 spec["title"] = title_override.strip()
 
             published_info: list[str] = []
+            out_v_url = None
+            out_a_url = None
 
             # 1. Generate square episode artwork (2048x2048)
             set_task("running", "Gerando capa quadrada do episódio (2048x2048)...", 20, "Processando arte oficial do episódio para Spotify e Apple Podcasts...")
@@ -205,6 +251,7 @@ def publish_worker(
                 v_key = f"episodes/{video_id}.mp4"
                 client.upload_file(str(mp4), bucket, v_key, ExtraArgs={"ContentType": "video/mp4"})
                 v_url = f"{public_domain}/{v_key}"
+                out_v_url = v_url
                 published_info.append(f"Vídeo MP4: {v_url}")
 
                 vodcast_path = Path("vodcast.xml")
@@ -262,6 +309,28 @@ def publish_worker(
                 except Exception:
                     pass
 
+            # Persist local copies in exports/ for download and Spotify automation
+            exports_dir = Path("exports").resolve()
+            exports_dir.mkdir(exist_ok=True)
+            local_art_path = None
+            local_mp4_path = None
+            local_mp3_path = None
+
+            if art_file.exists():
+                local_art = exports_dir / f"{video_id}.jpg"
+                shutil.copy2(str(art_file), str(local_art))
+                local_art_path = f"/exports/{video_id}.jpg"
+
+            if (directory / f"{video_id}.mp4").exists():
+                local_mp4 = exports_dir / f"{video_id}.mp4"
+                shutil.copy2(str(directory / f"{video_id}.mp4"), str(local_mp4))
+                local_mp4_path = f"/exports/{video_id}.mp4"
+
+            if (directory / f"{video_id}.mp3").exists():
+                local_mp3 = exports_dir / f"{video_id}.mp3"
+                shutil.copy2(str(directory / f"{video_id}.mp3"), str(local_mp3))
+                local_mp3_path = f"/exports/{video_id}.mp3"
+
             if git_push:
                 set_task("running", "Enviando alterações para o GitHub Pages...", 95, "Executando git commit e push...")
                 files_to_commit = ["podcast.xml", "video_state.json"]
@@ -276,10 +345,65 @@ def publish_worker(
                     set_task("running", "Feed gerado localmente (push pendente).", 98, f"Aviso no git push: {push_res.stderr.strip()}")
 
         summary = " | ".join(published_info)
-        set_task("success", f"Episódio '{video_title}' publicado com sucesso!", 100, f"Publicação finalizada com sucesso! {summary}")
+        set_task(
+            "success",
+            f"Episódio '{video_title}' publicado com sucesso!",
+            100,
+            f"Publicação finalizada com sucesso! {summary}",
+            video_url=out_v_url,
+            audio_url=out_a_url,
+            video_id=video_id,
+            title=video_title,
+            description=details.get("description", ""),
+            local_mp4=local_mp4_path,
+            local_art=local_art_path,
+            local_mp3=local_mp3_path,
+        )
     except Exception as exc:
         LOG.exception("Erro ao publicar episódio: %s", exc)
         set_task("error", f"Falha na publicação: {exc}", 0, f"ERRO: {exc}", error=str(exc))
+
+
+def spotify_upload_worker(video_id: str, title: str | None, description: str | None) -> None:
+    try:
+        from spotify_uploader import set_spotify_state, run_spotify_upload
+        exports_dir = Path("exports").resolve()
+        exports_dir.mkdir(exist_ok=True)
+        mp4_path = exports_dir / f"{video_id}.mp4"
+        art_path = exports_dir / f"{video_id}.jpg"
+
+        if not art_path.exists():
+            set_spotify_state("preparing", "Gerando arte quadrada do episódio...")
+            generate_episode_artwork(video_id, art_path)
+
+        if not mp4_path.exists():
+            set_spotify_state("preparing", f"Baixando e codificando vídeo {video_id}...")
+            with tempfile.TemporaryDirectory(prefix="spotify-vid-") as tmp:
+                v_src = download_video(video_id, Path(tmp))
+                encode_mp4(v_src, mp4_path)
+
+        if not title or not description:
+            try:
+                d = video_details(video_id)
+                if not title:
+                    title = d.get("title", video_id)
+                if not description:
+                    description = d.get("description", "")
+            except Exception:
+                if not title:
+                    title = video_id
+                if not description:
+                    description = ""
+
+        run_spotify_upload(
+            video_path=mp4_path,
+            artwork_path=art_path if art_path.exists() else None,
+            title=title,
+            description=description or "",
+        )
+    except Exception as exc:
+        LOG.exception("Erro no fluxo do Spotify: %s", exc)
+        set_spotify_state("error", f"Erro ao preparar envio: {exc}", error=str(exc))
 
 
 class StudioHandler(BaseHTTPRequestHandler):
@@ -316,6 +440,36 @@ class StudioHandler(BaseHTTPRequestHandler):
                 self.wfile.write(content)
                 return
             self.send_error(404, "studio.html não encontrado.")
+            return
+
+        if path.startswith("/exports/"):
+            filename = Path(path).name
+            exports_dir = Path("exports").resolve()
+            file_path = (exports_dir / filename).resolve()
+            if file_path.is_file() and str(file_path).startswith(str(exports_dir)):
+                mime = "application/octet-stream"
+                if filename.endswith(".mp4"):
+                    mime = "video/mp4"
+                elif filename.endswith(".mp3"):
+                    mime = "audio/mpeg"
+                elif filename.endswith((".jpg", ".jpeg")):
+                    mime = "image/jpeg"
+
+                stat = file_path.stat()
+                self.send_response(200)
+                self.send_header("Content-Type", mime)
+                self.send_header("Content-Length", str(stat.st_size))
+                if "download" in parsed.query:
+                    self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+                self.end_headers()
+                with open(file_path, "rb") as f:
+                    shutil.copyfileobj(f, self.wfile)
+                return
+            self.send_error(404, "Arquivo de exportação não encontrado.")
+            return
+
+        if path == "/api/spotify-status":
+            self.send_json(get_spotify_state())
             return
 
         if path == "/api/status":
@@ -442,6 +596,41 @@ class StudioHandler(BaseHTTPRequestHandler):
                     self.send_json({"ok": True, "preview_url": f"data:image/jpeg;base64,{b64_str}"})
             except Exception as exc:
                 self.send_json({"ok": False, "error": str(exc)}, status=400)
+            return
+
+        if path == "/api/spotify-confirm-login":
+            confirm_login()
+            self.send_json({"ok": True, "message": "Confirmação de login enviada ao robô Spotify."})
+            return
+
+        if path == "/api/spotify-cancel":
+            cancel_spotify_upload()
+            self.send_json({"ok": True, "message": "Automação do Spotify cancelada."})
+            return
+
+        if path == "/api/spotify-start-upload":
+            raw_id = body.get("video_id", "")
+            try:
+                video_id = parse_video_id(raw_id)
+            except ValueError as exc:
+                self.send_json({"error": str(exc)}, status=400)
+                return
+
+            sp_state = get_spotify_state()
+            if sp_state.get("status") in ("opening_browser", "waiting_login", "uploading", "filling_details"):
+                self.send_json({"error": "Já existe uma automação do Spotify em andamento!"}, status=409)
+                return
+
+            title = body.get("title")
+            description = body.get("description")
+
+            thread = threading.Thread(
+                target=spotify_upload_worker,
+                args=(video_id, title, description),
+                daemon=True,
+            )
+            thread.start()
+            self.send_json({"ok": True, "message": "Automação do Spotify iniciada."})
             return
 
         if path == "/api/publish":

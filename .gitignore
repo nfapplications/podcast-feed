@@ -5,3 +5,6 @@ __pycache__/
 *.mp3
 *.mp4
 cookies.txt
+.spotify_profile/
+exports/
+server.log
