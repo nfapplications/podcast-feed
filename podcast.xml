@@ -1,0 +1,20 @@
+<?xml version='1.0' encoding='utf-8'?>
+<rss xmlns:atom="http://www.w3.org/2005/Atom" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" version="2.0">
+  <channel>
+    <title>Núcleo da Fé</title>
+    <link>https://www.youtube.com/@nucleodafelive</link>
+    <description>Pregações e mensagens do Núcleo da Fé para acompanhar onde você estiver.</description>
+    <language>pt-BR</language>
+    <atom:link href="https://nfapplications.github.io/podcast-feed/podcast.xml" rel="self" type="application/rss+xml" />
+    <itunes:author>Núcleo da Fé</itunes:author>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:owner>
+      <itunes:name>Núcleo da Fé</itunes:name>
+      <itunes:email>wfmoura@gmail.com</itunes:email>
+    </itunes:owner>
+    <itunes:image href="https://pub-782ee0b9c17b40bcae3d6d60d29ee756.r2.dev/cover.jpg" />
+    <itunes:category text="Religion &amp; Spirituality">
+      <itunes:category text="Christianity" />
+    </itunes:category>
+  </channel>
+</rss>
