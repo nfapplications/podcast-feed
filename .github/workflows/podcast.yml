@@ -127,6 +127,7 @@ jobs:
           "${cmd[@]}"
           python scan_videos.py
           git add podcast.xml video_state.json
+          [ -f vodcast.xml ] && git add vodcast.xml
           if ! git diff --cached --quiet; then
             git commit -m "Publicar episódio $VIDEO_ID"
             git push
@@ -149,6 +150,7 @@ jobs:
           if [ -s podcast.xml ]; then
             mkdir -p public
             cp podcast.xml public/podcast.xml
+            [ -f vodcast.xml ] && cp vodcast.xml public/vodcast.xml
             cp index.html public/index.html
             touch public/.nojekyll
             echo "ready=true" >> "$GITHUB_OUTPUT"

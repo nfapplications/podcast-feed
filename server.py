@@ -72,6 +72,53 @@ CURRENT_TASK: dict[str, Any] = {
 }
 TASK_LOCK = threading.Lock()
 
+MANUAL_EXPORT_TASK: dict[str, Any] = {
+    "status": "idle",  # idle, running, completed, error
+    "message": "Nenhum download em andamento.",
+    "progress": 0,
+    "speed": None,
+    "eta": None,
+    "stage": None,
+    "video_id": None,
+    "download_url": None,
+    "error": None,
+}
+MANUAL_EXPORT_LOCK = threading.Lock()
+
+
+def set_manual_export(
+    status: str,
+    message: str,
+    progress: int = 0,
+    speed: str | None = None,
+    eta: str | None = None,
+    stage: str | None = None,
+    video_id: str | None = None,
+    download_url: str | None = None,
+    error: str | None = None,
+) -> None:
+    with MANUAL_EXPORT_LOCK:
+        MANUAL_EXPORT_TASK["status"] = status
+        MANUAL_EXPORT_TASK["message"] = message
+        MANUAL_EXPORT_TASK["progress"] = progress
+        if speed is not None:
+            MANUAL_EXPORT_TASK["speed"] = speed
+        if eta is not None:
+            MANUAL_EXPORT_TASK["eta"] = eta
+        if stage is not None:
+            MANUAL_EXPORT_TASK["stage"] = stage
+        if video_id is not None:
+            MANUAL_EXPORT_TASK["video_id"] = video_id
+        if download_url is not None:
+            MANUAL_EXPORT_TASK["download_url"] = download_url
+        if error is not None:
+            MANUAL_EXPORT_TASK["error"] = error
+
+
+def get_manual_export_state() -> dict[str, Any]:
+    with MANUAL_EXPORT_LOCK:
+        return dict(MANUAL_EXPORT_TASK)
+
 
 def set_task(
     status: str,
@@ -386,13 +433,23 @@ def publish_worker(
         set_task("error", f"Falha na publicação: {exc}", 0, f"ERRO: {exc}", error=str(exc))
 
 
-def spotify_upload_worker(video_id: str, title: str | None, description: str | None, quality: str = "720") -> None:
+def spotify_upload_worker(
+    video_id: str,
+    title: str | None,
+    description: str | None,
+    quality: str = "720",
+    start_str: str | None = None,
+    end_str: str | None = None,
+) -> None:
     try:
         from spotify_uploader import set_spotify_state, run_spotify_upload
         exports_dir = Path("exports").resolve()
         exports_dir.mkdir(exist_ok=True)
         mp4_path = exports_dir / f"{video_id}.mp4"
         art_path = exports_dir / f"{video_id}.jpg"
+
+        start_sec = seconds(start_str) if start_str and start_str.strip() else None
+        end_sec = seconds(end_str) if end_str and end_str.strip() else None
 
         if not art_path.exists():
             set_spotify_state("preparing", "Gerando arte quadrada do episódio...", stage="artwork")
@@ -412,7 +469,7 @@ def spotify_upload_worker(video_id: str, title: str | None, description: str | N
             def on_sp_enc(pct: float, spd: str, eta: str):
                 set_spotify_state(
                     "preparing",
-                    f"Otimizando vídeo MP4 (+faststart)... {pct:.1f}%",
+                    f"Recortando e otimizando vídeo MP4 (+faststart)... {pct:.1f}%",
                     progress=int(pct),
                     speed=spd,
                     eta=eta,
@@ -421,7 +478,7 @@ def spotify_upload_worker(video_id: str, title: str | None, description: str | N
 
             with tempfile.TemporaryDirectory(prefix="spotify-vid-") as tmp:
                 v_src = download_video(video_id, Path(tmp), quality=quality, progress_callback=on_sp_dl)
-                encode_mp4(v_src, mp4_path, None, None, progress_callback=on_sp_enc)
+                encode_mp4(v_src, mp4_path, start_sec, end_sec, progress_callback=on_sp_enc)
 
         if not title or not description:
             try:
@@ -445,6 +502,84 @@ def spotify_upload_worker(video_id: str, title: str | None, description: str | N
     except Exception as exc:
         LOG.exception("Erro no fluxo do Spotify: %s", exc)
         set_spotify_state("error", f"Erro ao preparar envio: {exc}", error=str(exc))
+
+
+def manual_export_worker(
+    video_id: str,
+    start_str: str | None = None,
+    end_str: str | None = None,
+    quality: str = "720",
+    force: bool = False,
+) -> None:
+    try:
+        set_manual_export(
+            "running",
+            f"Preparando download do vídeo {video_id} ({quality}p)...",
+            progress=5,
+            stage="downloading",
+            video_id=video_id,
+        )
+        exports_dir = Path("exports").resolve()
+        exports_dir.mkdir(exist_ok=True)
+        mp4_path = exports_dir / f"{video_id}.mp4"
+        art_path = exports_dir / f"{video_id}.jpg"
+
+        start_sec = seconds(start_str) if start_str and start_str.strip() else None
+        end_sec = seconds(end_str) if end_str and end_str.strip() else None
+
+        if not art_path.exists():
+            set_manual_export("running", "Gerando capa quadrada do episódio...", 10, stage="artwork", video_id=video_id)
+            generate_episode_artwork(video_id, art_path)
+
+        if force and mp4_path.exists():
+            mp4_path.unlink()
+
+        if not mp4_path.exists():
+            def on_dl(pct: float, spd: str, eta: str):
+                mapped = int(10 + (pct * 0.45))
+                set_manual_export(
+                    "running",
+                    f"Baixando vídeo do YouTube ({quality}p)... {pct:.1f}%",
+                    progress=mapped,
+                    speed=spd,
+                    eta=eta,
+                    stage="downloading",
+                    video_id=video_id,
+                )
+
+            def on_enc(pct: float, spd: str, eta: str):
+                mapped = int(55 + (pct * 0.43))
+                set_manual_export(
+                    "running",
+                    f"Recortando e otimizando vídeo MP4 (+faststart)... {pct:.1f}%",
+                    progress=mapped,
+                    speed=spd,
+                    eta=eta,
+                    stage="encoding",
+                    video_id=video_id,
+                )
+
+            with tempfile.TemporaryDirectory(prefix="manual-export-") as tmp:
+                set_manual_export("running", f"Baixando stream ({quality}p)...", 10, stage="downloading", video_id=video_id)
+                v_src = download_video(video_id, Path(tmp), quality=quality, progress_callback=on_dl)
+
+                set_manual_export("running", "Recortando e codificando MP4 com FFmpeg...", 55, stage="encoding", video_id=video_id)
+                encode_mp4(v_src, mp4_path, start_sec, end_sec, progress_callback=on_enc)
+
+        v_size_mb = mp4_path.stat().st_size // 1024 // 1024
+        set_manual_export(
+            "completed",
+            f"Vídeo recortado e pronto! ({v_size_mb} MB)",
+            progress=100,
+            speed="Concluído",
+            eta="00:00",
+            stage="complete",
+            video_id=video_id,
+            download_url=f"/exports/{video_id}.mp4",
+        )
+    except Exception as exc:
+        LOG.exception("Erro ao gerar vídeo manual: %s", exc)
+        set_manual_export("error", f"Falha ao gerar vídeo: {exc}", 0, stage="error", error=str(exc), video_id=video_id)
 
 
 class StudioHandler(BaseHTTPRequestHandler):
@@ -506,7 +641,37 @@ class StudioHandler(BaseHTTPRequestHandler):
                 with open(file_path, "rb") as f:
                     shutil.copyfileobj(f, self.wfile)
                 return
-            self.send_error(404, "Arquivo de exportação não encontrado.")
+            self.send_response(404)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b'{"error": "Arquivo nao encontrado na pasta exports. Gere o arquivo no Studio antes de baixar."}')
+            return
+
+        if path == "/api/manual-export-status":
+            self.send_json(get_manual_export_state())
+            return
+
+        if path == "/api/check-export":
+            query_map = urllib.parse.parse_qs(parsed.query)
+            v_id = query_map.get("id", [""])[0]
+            if not v_id:
+                self.send_json({"error": "id e obrigatorio"}, status=400)
+                return
+            exports_dir = Path("exports").resolve()
+            mp4_file = exports_dir / f"{v_id}.mp4"
+            art_file = exports_dir / f"{v_id}.jpg"
+            mp3_file = exports_dir / f"{v_id}.mp3"
+            mp4_exists = mp4_file.is_file()
+            mp4_size = mp4_file.stat().st_size if mp4_exists else 0
+            mp4_formatted = f"{mp4_size // 1024 // 1024} MB" if mp4_exists else None
+            self.send_json({
+                "video_id": v_id,
+                "mp4_exists": mp4_exists,
+                "mp4_size": mp4_size,
+                "mp4_formatted": mp4_formatted,
+                "art_exists": art_file.is_file(),
+                "mp3_exists": mp3_file.is_file(),
+            })
             return
 
         if path == "/api/spotify-status":
@@ -645,6 +810,20 @@ class StudioHandler(BaseHTTPRequestHandler):
                 self.send_json({"ok": False, "error": str(exc)}, status=400)
             return
 
+        if path == "/api/clean-exports":
+            exports_dir = Path("exports").resolve()
+            freed_bytes = 0
+            count = 0
+            if exports_dir.exists():
+                for f in exports_dir.glob("*"):
+                    if f.is_file():
+                        freed_bytes += f.stat().st_size
+                        f.unlink()
+                        count += 1
+            freed_mb = freed_bytes // 1024 // 1024
+            self.send_json({"ok": True, "freed_mb": freed_mb, "message": f"{count} arquivos removidos. {freed_mb} MB de disco liberados!"})
+            return
+
         if path == "/api/spotify-confirm-login":
             confirm_login()
             self.send_json({"ok": True, "message": "Confirmação de login enviada ao robô Spotify."})
@@ -653,6 +832,61 @@ class StudioHandler(BaseHTTPRequestHandler):
         if path == "/api/spotify-cancel":
             cancel_spotify_upload()
             self.send_json({"ok": True, "message": "Automação do Spotify cancelada."})
+            return
+
+        if path == "/api/prepare-export":
+            raw_id = body.get("video_id", "")
+            try:
+                video_id = parse_video_id(raw_id)
+            except ValueError as exc:
+                self.send_json({"error": str(exc)}, status=400)
+                return
+
+            quality = body.get("quality", "720")
+            start = body.get("start")
+            end = body.get("end")
+            force = bool(body.get("force", False))
+
+            exports_dir = Path("exports").resolve()
+            mp4_file = exports_dir / f"{video_id}.mp4"
+
+            if mp4_file.is_file() and not force:
+                self.send_json({
+                    "status": "ready",
+                    "video_id": video_id,
+                    "download_url": f"/exports/{video_id}.mp4",
+                    "size": mp4_file.stat().st_size,
+                    "size_formatted": f"{mp4_file.stat().st_size // 1024 // 1024} MB",
+                })
+                return
+
+            curr_state = get_manual_export_state()
+            if curr_state.get("status") == "running" and curr_state.get("video_id") == video_id:
+                self.send_json({"status": "running", "message": "Download já em andamento."})
+                return
+
+            thread = threading.Thread(
+                target=manual_export_worker,
+                args=(video_id, start, end, quality, force),
+                daemon=True,
+            )
+            thread.start()
+            self.send_json({"status": "started", "message": "Download e recorte iniciados."})
+            return
+
+        if path == "/api/prepare-cover":
+            raw_id = body.get("video_id", "")
+            try:
+                video_id = parse_video_id(raw_id)
+            except ValueError as exc:
+                self.send_json({"error": str(exc)}, status=400)
+                return
+            exports_dir = Path("exports").resolve()
+            exports_dir.mkdir(exist_ok=True)
+            art_file = exports_dir / f"{video_id}.jpg"
+            if not art_file.exists():
+                generate_episode_artwork(video_id, art_file)
+            self.send_json({"status": "ready", "download_url": f"/exports/{video_id}.jpg"})
             return
 
         if path == "/api/spotify-start-upload":
@@ -671,10 +905,12 @@ class StudioHandler(BaseHTTPRequestHandler):
             title = body.get("title")
             description = body.get("description")
             quality = body.get("quality", "720")
+            start = body.get("start")
+            end = body.get("end")
 
             thread = threading.Thread(
                 target=spotify_upload_worker,
-                args=(video_id, title, description, quality),
+                args=(video_id, title, description, quality, start, end),
                 daemon=True,
             )
             thread.start()
