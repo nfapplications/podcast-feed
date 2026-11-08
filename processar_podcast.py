@@ -275,41 +275,107 @@ def existing_guids(channel: ET.Element) -> set[str]:
     return {item.findtext("guid", default="") for item in channel.findall("item")}
 
 
-def download_audio(video_id: str, directory: Path) -> Path:
+def run_ytdlp_with_progress(cmd: list[str], progress_callback: Any = None) -> None:
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    progress_regex = re.compile(r"^PROGRESS:\s*([\d\.]+)%\|\s*([^|]+)\|\s*([^|\r\n]+)")
+    if proc.stdout:
+        for line in proc.stdout:
+            line = line.strip()
+            if not line:
+                continue
+            m = progress_regex.match(line)
+            if m and progress_callback:
+                try:
+                    pct = float(m.group(1))
+                    speed = m.group(2).strip()
+                    eta = m.group(3).strip()
+                    progress_callback(pct, speed, eta)
+                except Exception:
+                    pass
+    proc.wait()
+    if proc.returncode != 0:
+        raise RuntimeError(f"Falha ao executar yt-dlp (código {proc.returncode})")
+
+
+def download_audio(video_id: str, directory: Path, progress_callback: Any = None) -> Path:
     url = f"https://www.youtube.com/watch?v={video_id}"
     cmd = [
-        ytdlp_cmd(), "--no-playlist", "--no-warnings", "--no-progress", "-f", "ba/b",
+        ytdlp_cmd(),
+        "--no-playlist",
+        "--no-warnings",
+        "--remote-components", "ejs:github",
+        "-f", "ba/b",
+        "--newline",
+        "--progress-template", "PROGRESS:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s",
         "-o", str(directory / "source.%(ext)s"),
     ]
     if Path("cookies.txt").exists():
         cmd += ["--cookies", "cookies.txt"]
     cmd.append(url)
-    run(cmd)
+    run_ytdlp_with_progress(cmd, progress_callback)
     files = [path for path in directory.glob("source.*") if path.is_file() and path.stat().st_size]
     if len(files) != 1:
         raise RuntimeError(f"Download de {video_id} não gerou um único arquivo de áudio.")
     return files[0]
 
 
-def download_video(video_id: str, directory: Path) -> Path:
+def download_video(
+    video_id: str,
+    directory: Path,
+    quality: str = "720",
+    progress_callback: Any = None,
+) -> Path:
+    height = int(quality) if str(quality).isdigit() else 720
     url = f"https://www.youtube.com/watch?v={video_id}"
     cmd = [
-        ytdlp_cmd(), "--no-playlist", "--no-warnings", "--no-progress",
-        "-f", "bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]/b",
+        ytdlp_cmd(),
+        "--no-playlist",
+        "--no-warnings",
+        "--remote-components", "ejs:github",
+        "-f", f"bv*[height<={height}][ext=mp4]+ba[ext=m4a]/bv*[height<={height}]+ba/b[height<={height}]/b",
         "--merge-output-format", "mp4",
+        "--newline",
+        "--progress-template", "PROGRESS:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s",
         "-o", str(directory / "source_video.%(ext)s"),
     ]
     if Path("cookies.txt").exists():
         cmd += ["--cookies", "cookies.txt"]
     cmd.append(url)
-    run(cmd)
+    run_ytdlp_with_progress(cmd, progress_callback)
     files = [path for path in directory.glob("source_video.*") if path.is_file() and path.stat().st_size]
     if not files:
         raise RuntimeError(f"Download do vídeo de {video_id} não gerou arquivo.")
     return files[0]
 
 
-def encode_mp4(source: Path, output: Path, start: int | None = None, end: int | None = None) -> tuple[int, int]:
+def encode_mp4(
+    source: Path,
+    output: Path,
+    start: int | None = None,
+    end: int | None = None,
+    progress_callback: Any = None,
+) -> tuple[int, int]:
+    probe_raw = run([
+        "ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", str(source)
+    ])
+    try:
+        total_dur = float(json.loads(probe_raw).get("format", {}).get("duration", 0))
+    except Exception:
+        total_dur = 0
+
+    if start is not None and end is not None:
+        target_dur = max(1.0, float(end - start))
+    elif total_dur > 0:
+        target_dur = total_dur
+    else:
+        target_dur = 1.0
+
     command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
     if start is not None and end is not None:
         command += ["-ss", str(start), "-to", str(end)]
@@ -318,9 +384,34 @@ def encode_mp4(source: Path, output: Path, start: int | None = None, end: int | 
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "24",
         "-c:a", "aac", "-b:a", "128k", "-ac", "2", "-ar", "44100",
         "-movflags", "+faststart",
+        "-progress", "pipe:1",
         str(output),
     ]
-    run(command)
+
+    proc = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+    if proc.stdout:
+        for line in proc.stdout:
+            line = line.strip()
+            if line.startswith("out_time_us="):
+                try:
+                    us = int(line.split("=")[1])
+                    cur_sec = us / 1_000_000.0
+                    pct = min(99.0, (cur_sec / target_dur) * 100.0)
+                    if progress_callback:
+                        progress_callback(pct, "FFmpeg x264", f"{int(cur_sec)}s / {int(target_dur)}s")
+                except Exception:
+                    pass
+    proc.wait()
+    if proc.returncode != 0:
+        err = proc.stderr.read() if proc.stderr else ""
+        raise RuntimeError(f"Erro na codificação MP4: {err[-500:]}")
+
     size = output.stat().st_size
     if size == 0:
         raise RuntimeError("FFmpeg gerou um vídeo MP4 vazio.")

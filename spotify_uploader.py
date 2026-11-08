@@ -12,10 +12,14 @@ from typing import Any
 LOG = logging.getLogger("spotify-uploader")
 
 STATE: dict[str, Any] = {
-    "status": "idle",  # idle, opening_browser, waiting_login, uploading, filling_details, ready_for_review, success, error
+    "status": "idle",  # idle, preparing, opening_browser, waiting_login, uploading, filling_details, ready_for_review, success, error
     "message": "Nenhum upload para o Spotify em andamento.",
     "error": None,
     "current_url": None,
+    "progress": 0,
+    "speed": None,
+    "eta": None,
+    "stage": None,
 }
 STATE_LOCK = threading.Lock()
 LOGIN_EVENT = threading.Event()
@@ -27,14 +31,31 @@ def get_spotify_state() -> dict[str, Any]:
         return dict(STATE)
 
 
-def set_spotify_state(status: str, message: str, error: str | None = None, current_url: str | None = None) -> None:
+def set_spotify_state(
+    status: str,
+    message: str,
+    error: str | None = None,
+    current_url: str | None = None,
+    progress: int = 0,
+    speed: str | None = None,
+    eta: str | None = None,
+    stage: str | None = None,
+) -> None:
     with STATE_LOCK:
         STATE["status"] = status
         STATE["message"] = message
-        if error:
+        if error is not None:
             STATE["error"] = error
-        if current_url:
+        if current_url is not None:
             STATE["current_url"] = current_url
+        if progress:
+            STATE["progress"] = progress
+        if speed is not None:
+            STATE["speed"] = speed
+        if eta is not None:
+            STATE["eta"] = eta
+        if stage is not None:
+            STATE["stage"] = stage
         LOG.info("[%s] %s", status, message)
 
 

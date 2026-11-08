@@ -246,6 +246,113 @@
       border-radius: var(--radius);
       padding: 1.25rem;
     }
+    .quality-pill {
+      display: flex;
+      flex-direction: column;
+      padding: 0.45rem 0.6rem;
+      border: 1px solid var(--input-border);
+      border-radius: 6px;
+      cursor: pointer;
+      background: var(--input-bg);
+      font-size: 0.8rem;
+      transition: all 0.2s ease;
+      text-align: center;
+    }
+    .quality-pill:hover {
+      border-color: var(--primary);
+    }
+    .quality-pill.active {
+      border-color: var(--primary);
+      background: rgba(59, 130, 246, 0.12);
+      box-shadow: 0 0 10px rgba(59, 130, 246, 0.25);
+    }
+    .quality-pill strong {
+      color: var(--text);
+      font-size: 0.85rem;
+    }
+    .quality-pill span {
+      color: var(--text-muted);
+      font-size: 0.68rem;
+    }
+
+    .cyber-hud {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      border-radius: 12px;
+      padding: 1.15rem;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), inset 0 0 15px rgba(59, 130, 246, 0.08);
+      position: relative;
+      overflow: hidden;
+    }
+    .hud-pulse-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #10b981;
+      display: inline-block;
+      box-shadow: 0 0 8px #10b981;
+      animation: pulseGlow 1.4s infinite ease-in-out;
+    }
+    @keyframes pulseGlow {
+      0%, 100% { transform: scale(0.9); opacity: 0.7; }
+      50% { transform: scale(1.25); opacity: 1; box-shadow: 0 0 14px #10b981; }
+    }
+    .hud-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.6rem;
+      margin-bottom: 0.85rem;
+    }
+    .hud-stat-card {
+      background: rgba(10, 15, 26, 0.7);
+      border: 1px solid rgba(59, 130, 246, 0.2);
+      border-radius: 8px;
+      padding: 0.6rem 0.75rem;
+      text-align: center;
+    }
+    .hud-stat-label {
+      font-size: 0.65rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+      margin-bottom: 0.2rem;
+    }
+    .hud-stat-value {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: #60a5fa;
+      letter-spacing: -0.5px;
+    }
+    .cyber-progress-track {
+      position: relative;
+      width: 100%;
+      height: 10px;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 9999px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .cyber-progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 50%, #10b981 100%);
+      border-radius: 9999px;
+      transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      box-shadow: 0 0 12px rgba(59, 130, 246, 0.5);
+    }
+    .shimmer-fx {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+      animation: hudShimmer 1.5s infinite;
+    }
+    @keyframes hudShimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
     .btn-outline {
       background: transparent;
       border: 1px solid var(--card-border);
@@ -562,6 +669,36 @@
             </div>
           </div>
 
+          <!-- Seleção de Qualidade do Vídeo -->
+          <div class="form-group" id="quality-selector-group" style="margin-top: 0.65rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+              <label style="margin-bottom: 0;">🎥 Qualidade do Vídeo (Download & Spotify)</label>
+              <span id="selected-quality-badge" class="badge" style="font-size: 0.7rem; background: rgba(59, 130, 246, 0.15); color: var(--primary);">720p HD</span>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem;">
+              <label class="quality-pill active" id="q-pill-720" onclick="selectQuality('720')">
+                <input type="radio" name="video-quality" value="720" checked style="display: none;">
+                <strong>720p HD</strong>
+                <span>~210 MB (Ideal)</span>
+              </label>
+              <label class="quality-pill" id="q-pill-1080" onclick="selectQuality('1080')">
+                <input type="radio" name="video-quality" value="1080" style="display: none;">
+                <strong>1080p FHD</strong>
+                <span>~450 MB (Máx)</span>
+              </label>
+              <label class="quality-pill" id="q-pill-480" onclick="selectQuality('480')">
+                <input type="radio" name="video-quality" value="480" style="display: none;">
+                <strong>480p SD</strong>
+                <span>~120 MB (Rápido)</span>
+              </label>
+              <label class="quality-pill" id="q-pill-360" onclick="selectQuality('360')">
+                <input type="radio" name="video-quality" value="360" style="display: none;">
+                <strong>360p Eco</strong>
+                <span>~75 MB (Leve)</span>
+              </label>
+            </div>
+          </div>
+
           <!-- Episode Artwork Preview & Upload Card -->
           <div class="card" style="margin-top: 0.75rem; border: 1px dashed var(--input-border); padding: 0.85rem;">
             <div class="card-title" style="font-size: 0.9rem; margin-bottom: 0.5rem;">
@@ -607,16 +744,41 @@
             🚀 Processar e Publicar Episódio (1-Clique)
           </button>
 
-          <!-- Live Task Progress Box -->
-          <div id="progress-container" style="margin-top: 1.25rem; display: none;" aria-live="polite">
-            <div style="display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 600;">
-              <span id="task-message">Aguardando...</span>
-              <span id="task-progress-pct">0%</span>
+          <!-- Futuristic Cyber HUD Live Task Progress Box -->
+          <div id="progress-container" class="cyber-hud" style="margin-top: 1.25rem; display: none;" aria-live="polite">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span class="hud-pulse-dot"></span>
+                <span id="task-stage-badge" class="badge" style="background: rgba(59, 130, 246, 0.2); color: var(--primary); font-family: monospace; letter-spacing: 0.5px;">INICIANDO...</span>
+              </div>
+              <div id="task-message" style="font-size: 0.85rem; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 65%;">Aguardando...</div>
             </div>
-            <div class="progress-bar-container">
-              <div id="progress-fill" class="progress-bar-fill"></div>
+
+            <!-- Stats Grid: 3 HUD Cards -->
+            <div class="hud-stats-grid">
+              <div class="hud-stat-card">
+                <div class="hud-stat-label">📊 PROGRESSO</div>
+                <div class="hud-stat-value" id="hud-pct">0%</div>
+              </div>
+              <div class="hud-stat-card">
+                <div class="hud-stat-label">⚡ VELOCIDADE</div>
+                <div class="hud-stat-value" id="hud-speed">-- MB/s</div>
+              </div>
+              <div class="hud-stat-card">
+                <div class="hud-stat-label">⏱️ TEMPO RESTANTE</div>
+                <div class="hud-stat-value" id="hud-eta">--:--</div>
+              </div>
             </div>
-            <div id="terminal-box" class="terminal-logs"></div>
+
+            <!-- Glowing Shimmer Progress Bar -->
+            <div class="cyber-progress-track">
+              <div id="progress-fill" class="cyber-progress-fill">
+                <div class="shimmer-fx"></div>
+              </div>
+            </div>
+
+            <!-- Terminal Logs -->
+            <div id="terminal-box" class="terminal-logs" style="margin-top: 0.85rem; font-size: 0.72rem; max-height: 120px;"></div>
           </div>
 
           <!-- Card de Publicação de Vídeo no Spotify (Opções A e B) -->
@@ -687,6 +849,27 @@
                       <span id="spotify-robot-badge" class="badge" style="font-size: 0.65rem;">Iniciando...</span>
                     </div>
                     <div id="spotify-robot-msg" style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.4;"></div>
+
+                    <!-- Mini Cyber HUD para download do Robô -->
+                    <div id="spotify-robot-hud" style="display: none; margin-top: 0.5rem;">
+                      <div class="hud-stats-grid" style="grid-template-columns: repeat(3, 1fr); gap: 0.4rem; margin-bottom: 0.4rem;">
+                        <div class="hud-stat-card" style="padding: 0.35rem 0.45rem;">
+                          <div class="hud-stat-label" style="font-size: 0.58rem;">📊 PROGRESSO</div>
+                          <div class="hud-stat-value" id="sp-hud-pct" style="font-size: 0.95rem;">0%</div>
+                        </div>
+                        <div class="hud-stat-card" style="padding: 0.35rem 0.45rem;">
+                          <div class="hud-stat-label" style="font-size: 0.58rem;">⚡ VELOCIDADE</div>
+                          <div class="hud-stat-value" id="sp-hud-speed" style="font-size: 0.95rem;">--</div>
+                        </div>
+                        <div class="hud-stat-card" style="padding: 0.35rem 0.45rem;">
+                          <div class="hud-stat-label" style="font-size: 0.58rem;">⏱️ RESTANTE</div>
+                          <div class="hud-stat-value" id="sp-hud-eta" style="font-size: 0.95rem;">--</div>
+                        </div>
+                      </div>
+                      <div class="cyber-progress-track" style="height: 6px;">
+                        <div id="sp-progress-fill" class="cyber-progress-fill" style="width: 0%;"></div>
+                      </div>
+                    </div>
 
                     <!-- Caixa de confirmação de login solicitada pelo usuário -->
                     <div id="spotify-login-action-box" style="display: none; margin-top: 0.65rem; padding: 0.65rem; background: rgba(245, 158, 11, 0.12); border: 1px solid var(--warning); border-radius: 6px;">
@@ -1209,6 +1392,20 @@
     }
   }
 
+  function selectQuality(val) {
+    document.querySelectorAll('.quality-pill').forEach(el => el.classList.remove('active'));
+    const pill = document.getElementById('q-pill-' + val);
+    if (pill) pill.classList.add('active');
+    const badge = document.getElementById('selected-quality-badge');
+    if (badge) badge.textContent = val + 'p ' + (val === '720' ? 'HD' : val === '1080' ? 'FHD' : val === '480' ? 'SD' : 'Eco');
+    const radio = document.querySelector(`input[name="video-quality"][value="${val}"]`);
+    if (radio) radio.checked = true;
+  }
+
+  function getSelectedQuality() {
+    return document.querySelector('input[name="video-quality"]:checked')?.value || "720";
+  }
+
   async function startPublish() {
     const videoInput = document.getElementById('video-input').value.trim();
     const title = document.getElementById('episode-title').value.trim();
@@ -1216,6 +1413,7 @@
     const end = document.getElementById('cut-end-input').value.trim();
     const gitPush = document.getElementById('git-push-check').checked;
     const mediaFormat = document.querySelector('input[name="media-format"]:checked')?.value || "audio";
+    const quality = getSelectedQuality();
 
     if (!videoInput) {
       alert("Por favor, selecione ou informe o link/ID do vídeo!");
@@ -1238,7 +1436,8 @@
           end: end || null,
           git_push: gitPush,
           media_format: mediaFormat,
-          custom_cover: currentCustomCoverB64
+          custom_cover: currentCustomCoverB64,
+          quality: quality
         })
       });
 
@@ -1265,8 +1464,24 @@
       const data = await res.json();
 
       document.getElementById('task-message').textContent = data.message || "";
-      document.getElementById('task-progress-pct').textContent = (data.progress || 0) + "%";
+      document.getElementById('hud-pct').textContent = (data.progress || 0) + "%";
       document.getElementById('progress-fill').style.width = (data.progress || 0) + "%";
+      document.getElementById('hud-speed').textContent = data.speed || "-- MB/s";
+      document.getElementById('hud-eta').textContent = data.eta || "--:--";
+
+      const stageBadge = document.getElementById('task-stage-badge');
+      if (stageBadge && data.stage) {
+        const stageMap = {
+          downloading: "📥 BAIXANDO VÍDEO",
+          encoding: "⚙️ OTIMIZANDO MP4",
+          artwork: "🖼️ GERANDO CAPA 1:1",
+          upload_r2: "☁️ ENVIANDO AO R2",
+          git_push: "🐙 GITHUB PAGES",
+          complete: "✅ FINALIZADO",
+          error: "❌ ERRO"
+        };
+        stageBadge.textContent = stageMap[data.stage] || data.stage.toUpperCase();
+      }
 
       if (Array.isArray(data.logs)) {
         const term = document.getElementById('terminal-box');
@@ -1349,6 +1564,7 @@
     const badge = document.getElementById('spotify-robot-badge');
     const msg = document.getElementById('spotify-robot-msg');
     const btnStart = document.getElementById('btn-start-spotify-robot');
+    const quality = getSelectedQuality();
 
     statusBox.style.display = 'block';
     btnStart.disabled = true;
@@ -1361,7 +1577,7 @@
       const res = await fetch('/api/spotify-start-upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ video_id: vId, title: title })
+        body: JSON.stringify({ video_id: vId, title: title, quality: quality })
       });
       const data = await res.json();
       if (!res.ok) {
@@ -1387,8 +1603,20 @@
       const msg = document.getElementById('spotify-robot-msg');
       const loginBox = document.getElementById('spotify-login-action-box');
       const btnStart = document.getElementById('btn-start-spotify-robot');
+      const spHud = document.getElementById('spotify-robot-hud');
 
       if (msg) msg.textContent = data.message || "";
+
+      // Realtime speed & ETA HUD for Robot
+      if (data.status === 'preparing' || data.speed || data.eta) {
+        if (spHud) spHud.style.display = 'block';
+        if (document.getElementById('sp-hud-pct')) document.getElementById('sp-hud-pct').textContent = (data.progress || 0) + '%';
+        if (document.getElementById('sp-hud-speed')) document.getElementById('sp-hud-speed').textContent = data.speed || '--';
+        if (document.getElementById('sp-hud-eta')) document.getElementById('sp-hud-eta').textContent = data.eta || '--';
+        if (document.getElementById('sp-progress-fill')) document.getElementById('sp-progress-fill').style.width = (data.progress || 0) + '%';
+      } else {
+        if (spHud && data.status !== 'preparing') spHud.style.display = 'none';
+      }
 
       if (data.status === 'waiting_login') {
         badge.textContent = "🔑 Aguardando Login";
@@ -1400,7 +1628,7 @@
       }
 
       if (data.status === 'opening_browser' || data.status === 'preparing') {
-        badge.textContent = "🌐 Preparando";
+        badge.textContent = data.status === 'preparing' ? "📥 Baixando & Codificando" : "🌐 Abrindo Chrome";
         badge.style.background = "rgba(59, 130, 246, 0.15)";
         badge.style.color = "var(--primary)";
       } else if (data.status === 'uploading') {

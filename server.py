@@ -56,6 +56,9 @@ CURRENT_TASK: dict[str, Any] = {
     "status": "idle",  # idle, running, success, error
     "message": "Nenhuma publicação em andamento.",
     "progress": 0,
+    "speed": None,
+    "eta": None,
+    "stage": None,
     "logs": [],
     "error": None,
     "video_url": None,
@@ -75,6 +78,9 @@ def set_task(
     message: str,
     progress: int = 0,
     log_line: str | None = None,
+    speed: str | None = None,
+    eta: str | None = None,
+    stage: str | None = None,
     error: str | None = None,
     video_url: str | None = None,
     audio_url: str | None = None,
@@ -89,6 +95,12 @@ def set_task(
         CURRENT_TASK["status"] = status
         CURRENT_TASK["message"] = message
         CURRENT_TASK["progress"] = progress
+        if speed is not None:
+            CURRENT_TASK["speed"] = speed
+        if eta is not None:
+            CURRENT_TASK["eta"] = eta
+        if stage is not None:
+            CURRENT_TASK["stage"] = stage
         if log_line:
             CURRENT_TASK["logs"].append(f"[{time.strftime('%H:%M:%S')}] {log_line}")
         if error:
@@ -187,6 +199,7 @@ def publish_worker(
     git_push: bool,
     media_format: str = "audio",  # "audio", "video", "both"
     custom_cover_b64: str | None = None,
+    quality: str = "720",
 ) -> None:
     try:
         set_task("running", f"Iniciando publicação ({media_format}) do vídeo {video_id}...", 5, "Buscando detalhes do vídeo no YouTube...")
@@ -241,12 +254,20 @@ def publish_worker(
             published_info.append(f"Capa: {ep_image_url}")
 
             if media_format in ("video", "both"):
-                set_task("running", "Baixando vídeo do YouTube...", 30, f"Baixando stream de vídeo de {video_id}...")
-                video_src = download_video(video_id, directory)
+                set_task("running", f"Baixando vídeo ({quality}p) do YouTube...", 25, f"Baixando stream de vídeo ({quality}p) de {video_id}...", stage="downloading")
+                def on_dl(pct: float, spd: str, eta: str):
+                    mapped = int(25 + (pct * 0.25))
+                    set_task("running", f"Baixando vídeo ({quality}p)... {pct:.1f}%", mapped, speed=spd, eta=eta, stage="downloading")
 
-                set_task("running", "Processando vídeo MP4 com FFmpeg...", 50, "Cortando e otimizando vídeo MP4 (+faststart)...")
+                video_src = download_video(video_id, directory, quality=quality, progress_callback=on_dl)
+
+                set_task("running", "Processando vídeo MP4 com FFmpeg...", 50, "Cortando e otimizando vídeo MP4 (+faststart)...", stage="encoding")
+                def on_enc(pct: float, spd: str, eta: str):
+                    mapped = int(50 + (pct * 0.20))
+                    set_task("running", f"Codificando MP4... {pct:.1f}%", mapped, speed=spd, eta=eta, stage="encoding")
+
                 mp4 = directory / f"{video_id}.mp4"
-                v_size, v_dur = encode_mp4(video_src, mp4, start_sec, end_sec)
+                v_size, v_dur = encode_mp4(video_src, mp4, start_sec, end_sec, progress_callback=on_enc)
 
                 set_task("running", f"Enviando vídeo ({v_size // 1024 // 1024} MB) para o Cloudflare R2...", 70, "Upload do vídeo MP4 para o Cloudflare R2...")
                 v_key = f"episodes/{video_id}.mp4"
@@ -365,7 +386,7 @@ def publish_worker(
         set_task("error", f"Falha na publicação: {exc}", 0, f"ERRO: {exc}", error=str(exc))
 
 
-def spotify_upload_worker(video_id: str, title: str | None, description: str | None) -> None:
+def spotify_upload_worker(video_id: str, title: str | None, description: str | None, quality: str = "720") -> None:
     try:
         from spotify_uploader import set_spotify_state, run_spotify_upload
         exports_dir = Path("exports").resolve()
@@ -374,14 +395,33 @@ def spotify_upload_worker(video_id: str, title: str | None, description: str | N
         art_path = exports_dir / f"{video_id}.jpg"
 
         if not art_path.exists():
-            set_spotify_state("preparing", "Gerando arte quadrada do episódio...")
+            set_spotify_state("preparing", "Gerando arte quadrada do episódio...", stage="artwork")
             generate_episode_artwork(video_id, art_path)
 
         if not mp4_path.exists():
-            set_spotify_state("preparing", f"Baixando e codificando vídeo {video_id}...")
+            set_spotify_state("preparing", f"Baixando vídeo {video_id} ({quality}p)...", stage="downloading")
+            def on_sp_dl(pct: float, spd: str, eta: str):
+                set_spotify_state(
+                    "preparing",
+                    f"Baixando vídeo ({quality}p)... {pct:.1f}%",
+                    progress=int(pct),
+                    speed=spd,
+                    eta=eta,
+                    stage="downloading",
+                )
+            def on_sp_enc(pct: float, spd: str, eta: str):
+                set_spotify_state(
+                    "preparing",
+                    f"Otimizando vídeo MP4 (+faststart)... {pct:.1f}%",
+                    progress=int(pct),
+                    speed=spd,
+                    eta=eta,
+                    stage="encoding",
+                )
+
             with tempfile.TemporaryDirectory(prefix="spotify-vid-") as tmp:
-                v_src = download_video(video_id, Path(tmp))
-                encode_mp4(v_src, mp4_path, None, None)
+                v_src = download_video(video_id, Path(tmp), quality=quality, progress_callback=on_sp_dl)
+                encode_mp4(v_src, mp4_path, None, None, progress_callback=on_sp_enc)
 
         if not title or not description:
             try:
@@ -560,6 +600,12 @@ class StudioHandler(BaseHTTPRequestHandler):
                     "duration_formatted": f"{duration // 3600:02d}:{(duration % 3600) // 60:02d}:{duration % 60:02d}",
                     "channel": details.get("channel", "Núcleo da Fé"),
                     "thumbnail": f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg",
+                    "qualities": [
+                        {"label": "720p HD (Recomendado)", "value": "720", "est_size": "~210 MB"},
+                        {"label": "1080p Full HD", "value": "1080", "est_size": "~450 MB"},
+                        {"label": "480p SD", "value": "480", "est_size": "~120 MB"},
+                        {"label": "360p Econômico", "value": "360", "est_size": "~75 MB"},
+                    ],
                 })
             except Exception as exc:
                 self.send_json({"error": str(exc)}, status=400)
@@ -624,10 +670,11 @@ class StudioHandler(BaseHTTPRequestHandler):
 
             title = body.get("title")
             description = body.get("description")
+            quality = body.get("quality", "720")
 
             thread = threading.Thread(
                 target=spotify_upload_worker,
-                args=(video_id, title, description),
+                args=(video_id, title, description, quality),
                 daemon=True,
             )
             thread.start()
@@ -655,10 +702,11 @@ class StudioHandler(BaseHTTPRequestHandler):
             git_push = body.get("git_push", True)
             media_format = body.get("media_format", "audio")  # "audio", "video", "both"
             custom_cover_b64 = body.get("custom_cover")
+            quality = body.get("quality", "720")
 
             thread = threading.Thread(
                 target=publish_worker,
-                args=(video_id, start_str, end_str, title_override, git_push, media_format, custom_cover_b64),
+                args=(video_id, start_str, end_str, title_override, git_push, media_format, custom_cover_b64, quality),
                 daemon=True,
             )
             thread.start()
