@@ -128,11 +128,19 @@ def run(command: list[str]) -> str:
     return result.stdout
 
 
+def ytdlp_cmd() -> str:
+    """Retorna o binário yt-dlp do ambiente virtual atual (mais recente), ou fallback para PATH."""
+    venv_bin = Path(sys.executable).parent / "yt-dlp"
+    if venv_bin.exists():
+        return str(venv_bin)
+    return "yt-dlp"
+
+
 def video_details(video_id: str) -> dict[str, Any]:
     if not VIDEO_ID.fullmatch(video_id):
         raise ValueError(f"ID de vídeo inválido: {video_id!r}")
     url = f"https://www.youtube.com/watch?v={video_id}"
-    cmd = ["yt-dlp", "-j", "--no-warnings"]
+    cmd = [ytdlp_cmd(), "-j", "--no-warnings"]
     if Path("cookies.txt").exists():
         cmd += ["--cookies", "cookies.txt"]
     cmd.append(url)
@@ -149,7 +157,7 @@ def video_details(video_id: str) -> dict[str, Any]:
 
 def recent_video_ids(source_url: str, limit: int) -> list[str]:
     cmd = [
-        "yt-dlp", "--dump-single-json", "--flat-playlist", "--playlist-end", str(limit),
+        ytdlp_cmd(), "--dump-single-json", "--flat-playlist", "--playlist-end", str(limit),
         "--no-warnings",
         "--extractor-args", "youtube:player_client=android,ios,web",
     ]
@@ -270,7 +278,7 @@ def existing_guids(channel: ET.Element) -> set[str]:
 def download_audio(video_id: str, directory: Path) -> Path:
     url = f"https://www.youtube.com/watch?v={video_id}"
     cmd = [
-        "yt-dlp", "--no-playlist", "--no-warnings", "--no-progress", "-f", "ba/b",
+        ytdlp_cmd(), "--no-playlist", "--no-warnings", "--no-progress", "-f", "ba/b",
         "-o", str(directory / "source.%(ext)s"),
     ]
     if Path("cookies.txt").exists():
@@ -286,7 +294,7 @@ def download_audio(video_id: str, directory: Path) -> Path:
 def download_video(video_id: str, directory: Path) -> Path:
     url = f"https://www.youtube.com/watch?v={video_id}"
     cmd = [
-        "yt-dlp", "--no-playlist", "--no-warnings", "--no-progress",
+        ytdlp_cmd(), "--no-playlist", "--no-warnings", "--no-progress",
         "-f", "bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]/b",
         "--merge-output-format", "mp4",
         "-o", str(directory / "source_video.%(ext)s"),
@@ -301,7 +309,7 @@ def download_video(video_id: str, directory: Path) -> Path:
     return files[0]
 
 
-def encode_mp4(source: Path, output: Path, start: int | None, end: int | None) -> tuple[int, int]:
+def encode_mp4(source: Path, output: Path, start: int | None = None, end: int | None = None) -> tuple[int, int]:
     command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
     if start is not None and end is not None:
         command += ["-ss", str(start), "-to", str(end)]

@@ -40,6 +40,7 @@ from processar_podcast import (
     seconds,
     update_channel,
     video_details,
+    ytdlp_cmd,
 )
 from spotify_uploader import (
     cancel_spotify_upload,
@@ -123,7 +124,7 @@ def parse_video_id(input_str: str) -> str:
 def fetch_channel_videos(limit: int = 10) -> list[dict[str, Any]]:
     source_url = os.environ.get("PODCAST_SOURCE_URL", "https://www.youtube.com/@nucleodafelive/streams")
     cmd = [
-        "yt-dlp",
+        ytdlp_cmd(),
         "--dump-single-json",
         "--flat-playlist",
         "--playlist-end",
@@ -380,7 +381,7 @@ def spotify_upload_worker(video_id: str, title: str | None, description: str | N
             set_spotify_state("preparing", f"Baixando e codificando vídeo {video_id}...")
             with tempfile.TemporaryDirectory(prefix="spotify-vid-") as tmp:
                 v_src = download_video(video_id, Path(tmp))
-                encode_mp4(v_src, mp4_path)
+                encode_mp4(v_src, mp4_path, None, None)
 
         if not title or not description:
             try:
