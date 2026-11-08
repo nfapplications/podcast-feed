@@ -339,10 +339,11 @@ def check_artwork(url: str) -> None:
         from PIL import Image
     except ImportError as exc:
         raise RuntimeError("Instale as dependências de requirements.txt.") from exc
-    with urllib.request.urlopen(urllib.request.Request(url, method="HEAD"), timeout=20) as response:
+    headers = {"User-Agent": "podcast-feed/1.0"}
+    with urllib.request.urlopen(urllib.request.Request(url, headers=headers, method="HEAD"), timeout=20) as response:
         if response.status != 200:
             raise ValueError(f"A capa não aceita HEAD: HTTP {response.status}.")
-    with urllib.request.urlopen(url, timeout=30) as response:
+    with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=30) as response:
         data = response.read(10 * 1024 * 1024 + 1)
     if len(data) > 10 * 1024 * 1024:
         raise ValueError("A capa supera 10 MB.")

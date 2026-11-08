@@ -668,12 +668,23 @@
   let currentVideoId = "5CyVFrCs5Pk";
   let playerTimer = null;
   let pollStatusInterval = null;
+  let channelVideosMap = {};
+
+  function parseVideoId(input) {
+    if (!input) return "";
+    input = input.trim();
+    const match = input.match(/(?:v=|\/embed\/|\/watch\?v=|\/live\/|youtu\.be\/|^)([A-Za-z0-9_-]{11})(?:[?&]|$)/);
+    if (match) return match[1];
+    return input;
+  }
 
   function switchTab(tabId) {
     document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-    document.getElementById('tab-' + tabId).classList.add('active');
-    document.getElementById('tab-btn-' + tabId).classList.add('active');
+    const panel = document.getElementById('tab-' + tabId);
+    const btn = document.getElementById('tab-btn-' + tabId);
+    if (panel) panel.classList.add('active');
+    if (btn) btn.classList.add('active');
 
     if (tabId === 'channel') {
       loadChannelVideos();
@@ -684,17 +695,21 @@
 
   // YouTube API callback
   function onYouTubeIframeAPIReady() {
-    ytPlayer = new YT.Player('youtube-player', {
-      videoId: currentVideoId,
-      playerVars: {
-        playsinline: 1,
-        rel: 0,
-        modestbranding: 1
-      },
-      events: {
-        'onReady': onPlayerReady
-      }
-    });
+    try {
+      ytPlayer = new YT.Player('youtube-player', {
+        videoId: currentVideoId,
+        playerVars: {
+          playsinline: 1,
+          rel: 0,
+          modestbranding: 1
+        },
+        events: {
+          'onReady': onPlayerReady
+        }
+      });
+    } catch (e) {
+      console.error("Erro ao instanciar YT.Player:", e);
+    }
   }
 
   function onPlayerReady(event) {
@@ -720,25 +735,31 @@
   }
 
   function updatePlayerTimeDisplay() {
-    if (ytPlayer && ytPlayer.getCurrentTime) {
-      const current = ytPlayer.getCurrentTime() || 0;
-      document.getElementById('current-player-time').textContent = formatSeconds(current);
+    if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
+      try {
+        const current = ytPlayer.getCurrentTime() || 0;
+        document.getElementById('current-player-time').textContent = formatSeconds(current);
+      } catch (e) {}
     }
   }
 
   function captureTimestamp(type) {
-    if (!ytPlayer || !ytPlayer.getCurrentTime) return;
-    const current = Math.floor(ytPlayer.getCurrentTime());
-    const formatted = formatSeconds(current);
+    if (!ytPlayer || typeof ytPlayer.getCurrentTime !== 'function') return;
+    try {
+      const current = Math.floor(ytPlayer.getCurrentTime());
+      const formatted = formatSeconds(current);
 
-    if (type === 'start') {
-      document.getElementById('display-start').textContent = formatted;
-      document.getElementById('cut-start-input').value = formatted;
-    } else {
-      document.getElementById('display-end').textContent = formatted;
-      document.getElementById('cut-end-input').value = formatted;
+      if (type === 'start') {
+        document.getElementById('display-start').textContent = formatted;
+        document.getElementById('cut-start-input').value = formatted;
+      } else {
+        document.getElementById('display-end').textContent = formatted;
+        document.getElementById('cut-end-input').value = formatted;
+      }
+      updateCutSummary();
+    } catch (e) {
+      console.error(e);
     }
-    updateCutSummary();
   }
 
   function syncManualTimestamp() {
@@ -780,16 +801,42 @@
     }
   }
 
-  async function loadVideo(id, title) {
-    currentVideoId = id;
-    document.getElementById('video-input').value = id;
-    if (title) document.getElementById('episode-title').value = title;
+  function selectChannelVideo(id) {
+    const item = channelVideosMap[id];
+    const title = item ? item.title : "";
+    loadVideo(id, title);
+  }
 
-    if (ytPlayer && ytPlayer.loadVideoById) {
-      ytPlayer.loadVideoById(id);
+  async function loadVideo(rawId, title) {
+    const id = parseVideoId(rawId);
+    if (!id) return;
+    currentVideoId = id;
+    
+    const inputEl = document.getElementById('video-input');
+    if (inputEl) inputEl.value = id;
+
+    const titleEl = document.getElementById('episode-title');
+    if (title && titleEl) titleEl.value = title;
+
+    if (ytPlayer && typeof ytPlayer.loadVideoById === 'function') {
+      try {
+        ytPlayer.loadVideoById(id);
+      } catch (e) {
+        console.warn("loadVideoById fallback", e);
+      }
+    } else if (window.YT && window.YT.Player) {
+      try {
+        ytPlayer = new YT.Player('youtube-player', {
+          videoId: id,
+          playerVars: { playsinline: 1, rel: 0, modestbranding: 1 },
+          events: { 'onReady': onPlayerReady }
+        });
+      } catch (e) {}
     }
+
     resetCut();
     switchTab('studio');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 
     // Also fetch preview details if title is empty
     if (!title) {
@@ -800,8 +847,8 @@
           body: JSON.stringify({video_id: id})
         });
         const data = await res.json();
-        if (data.title) {
-          document.getElementById('episode-title').value = data.title;
+        if (data.title && titleEl) {
+          titleEl.value = data.title;
         }
       } catch (e) {
         console.error("Preview error", e);
@@ -811,7 +858,10 @@
 
   function loadVideoFromInput() {
     const raw = document.getElementById('video-input').value.trim();
-    if (!raw) return;
+    if (!raw) {
+      alert("Por favor, digite ou cole um link ou ID de vídeo do YouTube.");
+      return;
+    }
     loadVideo(raw);
   }
 
@@ -829,21 +879,29 @@
         return;
       }
 
-      grid.innerHTML = list.map(v => `
+      channelVideosMap = {};
+      list.forEach(v => {
+        channelVideosMap[v.id] = v;
+      });
+
+      grid.innerHTML = list.map(v => {
+        const safeTitle = (v.title || "").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        return `
         <article class="video-item">
           <img src="${v.thumbnail}" alt="" class="video-thumb" loading="lazy">
           <div class="video-content">
-            <h3 class="video-title" title="${v.title}">${v.title}</h3>
+            <h3 class="video-title" title="${safeTitle}">${safeTitle}</h3>
             <div class="video-meta">
               <span>⏱️ ${v.duration_formatted}</span>
               ${v.published ? '<span style="color: var(--success); font-weight: 600;">✅ Já no Feed</span>' : (v.is_live ? '<span style="color: var(--danger); font-weight: 600;">🔴 Ao Vivo</span>' : '<span style="color: var(--primary);">Disponível</span>')}
             </div>
-            <button type="button" class="btn ${v.published ? 'btn-outline' : 'btn-primary'}" style="width: 100%; font-size: 0.8rem;" onclick="loadVideo('${v.id}', ${JSON.stringify(v.title)})">
+            <button type="button" class="btn ${v.published ? 'btn-outline' : 'btn-primary'}" style="width: 100%; font-size: 0.8rem;" onclick="selectChannelVideo('${v.id}')">
               ⚡ Carregar no Studio
             </button>
           </div>
         </article>
-      `).join('');
+      `;
+      }).join('');
     } catch (err) {
       grid.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--danger); grid-column: 1 / -1;">Erro ao carregar vídeos: ${err.message}</div>`;
     }
@@ -1004,3 +1062,4 @@
 
 </body>
 </html>
+
