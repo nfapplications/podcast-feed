@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>Podcast Studio • Núcleo da Fé</title>
+  <link rel="icon" href="https://img.youtube.com/vi/5CyVFrCs5Pk/mqdefault.jpg" type="image/jpeg">
+  <style>
+    :root {
+      --bg: #0f141c;
+      --card-bg: #161d27;
+      --card-border: #263242;
+      --text: #f0f4f8;
+      --text-muted: #94a3b8;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --success: #10b981;
+      --success-hover: #059669;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --code-bg: #090d13;
+      --code-border: #1e293b;
+      --input-bg: #0d121a;
+      --input-border: #334155;
+      --radius: 10px;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f8fafc;
+        --card-bg: #ffffff;
+        --card-border: #e2e8f0;
+        --text: #0f172a;
+        --text-muted: #64748b;
+        --primary: #2563eb;
+        --primary-hover: #1d4ed8;
+        --code-bg: #f1f5f9;
+        --code-border: #cbd5e1;
+        --input-bg: #ffffff;
+        --input-border: #cbd5e1;
+      }
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 0 1rem 3rem;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      padding: 1.5rem 0 1rem;
+      border-bottom: 1px solid var(--card-border);
+      margin-bottom: 1.5rem;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .logo-area {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .logo-icon {
+      font-size: 2rem;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .header-badges {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.65rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+    }
+
+    .badge-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+    }
+
+    nav {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 0.5rem;
+      overflow-x: auto;
+    }
+
+    .tab-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.95rem;
+      padding: 0.6rem 1rem;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .tab-btn:hover {
+      color: var(--text);
+      background: var(--card-bg);
+    }
+
+    .tab-btn.active {
+      color: #fff;
+      background: var(--primary);
+    }
+
+    .tab-panel {
+      display: none;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .card-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.25rem;
+    }
+
+    @media (min-width: 900px) {
+      .grid-2 {
+        grid-template-columns: 1.2fr 0.8fr;
+      }
+    }
+
+    .form-group {
+      margin-bottom: 1rem;
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 0.35rem;
+      color: var(--text-muted);
+    }
+
+    input[type="text"], input[type="url"], textarea, select {
+      width: 100%;
+      padding: 0.6rem 0.75rem;
+      border-radius: 6px;
+      border: 1px solid var(--input-border);
+      background: var(--input-bg);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.95rem;
+      transition: border 0.15s ease;
+    }
+
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .input-row {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      padding: 0.6rem 1rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+    }
+
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-success:hover { background: var(--success-hover); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--card-border);
+      color: var(--text);
+    }
+    .btn-outline:hover {
+      background: var(--card-bg);
+      border-color: var(--primary);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .video-player-container {
+      position: relative;
+      width: 100%;
+      padding-top: 56.25%; /* 16:9 Aspect Ratio */
+      background: #000;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 1rem;
+    }
+
+    .video-player-container iframe {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+    }
+
+    .timestamp-controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .timestamp-box {
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      border-radius: 8px;
+      padding: 0.75rem;
+    }
+
+    .timestamp-box-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 0.4rem;
+    }
+
+    .timestamp-display {
+      font-size: 1.2rem;
+      font-weight: 700;
+      font-family: monospace;
+      color: var(--primary);
+      margin-bottom: 0.4rem;
+    }
+
+    .cut-summary-box {
+      background: var(--code-bg);
+      border: 1px dashed var(--code-border);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      font-size: 0.85rem;
+    }
+
+    .progress-bar-container {
+      width: 100%;
+      height: 12px;
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      border-radius: 9999px;
+      overflow: hidden;
+      margin: 0.75rem 0;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--primary), var(--success));
+      transition: width 0.3s ease;
+    }
+
+    .terminal-logs {
+      background: var(--code-bg);
+      border: 1px solid var(--code-border);
+      color: #38bdf8;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.8rem;
+      padding: 0.75rem;
+      border-radius: 8px;
+      max-height: 180px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* Video list cards */
+    .video-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+
+    .video-item {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+
+    .video-item:hover {
+      transform: translateY(-2px);
+      border-color: var(--primary);
+    }
+
+    .video-thumb {
+      width: 100%;
+      height: 155px;
+      object-fit: cover;
+      background: #000;
+    }
+
+    .video-content {
+      padding: 0.75rem;
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .video-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 0.4rem;
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .video-meta {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-bottom: 0.75rem;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* Episodes table */
+    .episodes-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    .episodes-table th, .episodes-table td {
+      padding: 0.75rem;
+      text-align: left;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .episodes-table th {
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    audio {
+      width: 100%;
+      height: 36px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div class="logo-area">
+      <div class="logo-icon" aria-hidden="true">🎙️</div>
+      <div>
+        <h1>Podcast Studio • Núcleo da Fé</h1>
+        <div class="subtitle">Publicação automatizada de Sermões para Spotify & Apple Podcasts</div>
+      </div>
+    </div>
+    <div class="header-badges">
+      <div class="badge" title="Armazenamento Cloudflare R2">
+        <span class="badge-dot"></span>
+        <span id="r2-status-text">Cloudflare R2: Conectado</span>
+      </div>
+      <a href="podcast.xml" target="_blank" class="badge" style="text-decoration: none; color: inherit;" title="Ver Feed RSS XML">
+        <span>📡 Feed RSS</span>
+      </a>
+    </div>
+  </header>
+
+  <nav aria-label="Navegação Principal">
+    <button class="tab-btn active" onclick="switchTab('studio')" id="tab-btn-studio">⚡ Estúdio de Publicação</button>
+    <button class="tab-btn" onclick="switchTab('channel')" id="tab-btn-channel">📺 Transmissões do Canal</button>
+    <button class="tab-btn" onclick="switchTab('episodes')" id="tab-btn-episodes">🎧 Episódios Publicados (<span id="episodes-count">0</span>)</button>
+    <button class="tab-btn" onclick="switchTab('settings')" id="tab-btn-settings">⚙️ Configurações & Diagnóstico</button>
+  </nav>
+
+  <!-- TAB 1: STUDIO -->
+  <main id="tab-studio" class="tab-panel active">
+    <div class="grid-2">
+      <!-- Left Column: Video Player & Time Picker -->
+      <section aria-labelledby="player-section-title">
+        <div class="card">
+          <div class="card-title" id="player-section-title">
+            <span>Reprodutor com Marcador de Tempo</span>
+            <span id="current-player-time" style="font-family: monospace; font-size: 0.95rem; color: var(--primary);">00:00:00</span>
+          </div>
+
+          <div class="video-player-container">
+            <div id="youtube-player"></div>
+          </div>
+
+          <div class="timestamp-controls">
+            <div class="timestamp-box">
+              <div class="timestamp-box-title">Início da Pregação</div>
+              <div class="timestamp-display" id="display-start">00:00:00</div>
+              <button type="button" class="btn btn-outline" style="width: 100%; font-size: 0.8rem;" onclick="captureTimestamp('start')">
+                ⏱️ Marcar Posição Atual
+              </button>
+            </div>
+
+            <div class="timestamp-box">
+              <div class="timestamp-box-title">Fim da Pregação</div>
+              <div class="timestamp-display" id="display-end">00:00:00</div>
+              <button type="button" class="btn btn-outline" style="width: 100%; font-size: 0.8rem;" onclick="captureTimestamp('end')">
+                ⏱️ Marcar Posição Atual
+              </button>
+            </div>
+          </div>
+
+          <div class="cut-summary-box">
+            <div>
+              <strong>Duração do Corte: </strong>
+              <span id="cut-duration-text">Vídeo completo (sem corte)</span>
+            </div>
+            <button type="button" class="btn btn-outline" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="resetCut()">
+              Limpar Corte
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Publishing Form & Live Progress -->
+      <section aria-labelledby="form-section-title">
+        <div class="card">
+          <div class="card-title" id="form-section-title">Detalhes do Episódio</div>
+
+          <div class="form-group">
+            <label for="video-input">Link ou ID da Transmissão do YouTube</label>
+            <div class="input-row">
+              <input type="text" id="video-input" placeholder="Ex: https://www.youtube.com/watch?v=5CyVFrCs5Pk ou 5CyVFrCs5Pk">
+              <button type="button" class="btn btn-outline" onclick="loadVideoFromInput()">Carregar</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="episode-title">Título do Episódio</label>
+            <input type="text" id="episode-title" placeholder="Título será preenchido automaticamente ao carregar">
+          </div>
+
+          <div class="form-group" style="display: flex; gap: 0.75rem;">
+            <div style="flex: 1;">
+              <label for="cut-start-input">Início (HH:MM:SS)</label>
+              <input type="text" id="cut-start-input" placeholder="00:00:00" onchange="syncManualTimestamp()">
+            </div>
+            <div style="flex: 1;">
+              <label for="cut-end-input">Fim (HH:MM:SS)</label>
+              <input type="text" id="cut-end-input" placeholder="00:00:00" onchange="syncManualTimestamp()">
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top: 0.5rem;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; color: var(--text);">
+              <input type="checkbox" id="git-push-check" checked style="width: auto;">
+              Enviar automaticamente para o GitHub Pages (Git Commit & Push)
+            </label>
+          </div>
+
+          <button type="button" id="publish-btn" class="btn btn-primary" style="width: 100%; padding: 0.85rem; font-size: 1rem; margin-top: 0.5rem;" onclick="startPublish()">
+            🚀 Processar e Publicar Episódio (1-Clique)
+          </button>
+
+          <!-- Live Task Progress Box -->
+          <div id="progress-container" style="margin-top: 1.25rem; display: none;" aria-live="polite">
+            <div style="display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 600;">
+              <span id="task-message">Aguardando...</span>
+              <span id="task-progress-pct">0%</span>
+            </div>
+            <div class="progress-bar-container">
+              <div id="progress-fill" class="progress-bar-fill"></div>
+            </div>
+            <div id="terminal-box" class="terminal-logs"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- TAB 2: CHANNEL STREAMS -->
+  <section id="tab-channel" class="tab-panel" aria-labelledby="channel-section-title">
+    <div class="card">
+      <div class="card-title" id="channel-section-title">
+        <span>Transmissões Recentes • @nucleodafelive</span>
+        <button type="button" class="btn btn-outline" style="font-size: 0.8rem;" onclick="loadChannelVideos(true)">
+          🔄 Atualizar Lista
+        </button>
+      </div>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+        Selecione qualquer transmissão abaixo para carregá-la diretamente no estúdio com apenas 1 clique:
+      </p>
+
+      <div id="channel-video-grid" class="video-grid">
+        <div style="padding: 2rem; text-align: center; color: var(--text-muted); grid-column: 1 / -1;">
+          Carregando transmissões recentes do canal...
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 3: PUBLISHED EPISODES -->
+  <section id="tab-episodes" class="tab-panel" aria-labelledby="episodes-section-title">
+    <div class="card">
+      <div class="card-title" id="episodes-section-title">
+        <span>Episódios no Feed RSS</span>
+        <button type="button" class="btn btn-outline" style="font-size: 0.8rem;" onclick="loadFeedEpisodes()">
+          🔄 Atualizar Feed
+        </button>
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table class="episodes-table">
+          <thead>
+            <tr>
+              <th style="min-width: 250px;">Título / Data</th>
+              <th>Duração</th>
+              <th style="min-width: 280px;">Player de Áudio (Cloudflare R2)</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="episodes-tbody">
+            <tr>
+              <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                Carregando episódios...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 4: SETTINGS & DIAGNOSTICS -->
+  <section id="tab-settings" class="tab-panel" aria-labelledby="settings-section-title">
+    <div class="card">
+      <div class="card-title" id="settings-section-title">Diagnóstico e Credenciais do Sistema</div>
+      
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+        <div>
+          <label>Bucket do Cloudflare R2</label>
+          <input type="text" id="cfg-bucket" readonly>
+        </div>
+        <div>
+          <label>Domínio Público do R2</label>
+          <input type="text" id="cfg-r2-domain" readonly>
+        </div>
+        <div>
+          <label>E-mail do Proprietário do Feed</label>
+          <input type="text" id="cfg-email" readonly>
+        </div>
+        <div>
+          <label>URL do Feed RSS</label>
+          <input type="text" id="cfg-feed-url" readonly>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem;">
+        <button type="button" class="btn btn-outline" onclick="testR2Connection()">
+          🧪 Testar Conexão Cloudflare R2
+        </button>
+        <span id="r2-test-result" style="font-size: 0.85rem;"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Como Cadastrar o Feed nas Plataformas</div>
+      <div style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.6;">
+        <p style="margin-bottom: 0.75rem;">
+          Uma vez publicado o primeiro episódio, copie a URL do Feed RSS (<code id="guide-feed-url" style="color: var(--primary);"></code>) e submeta nas plataformas:
+        </p>
+        <ul style="padding-left: 1.5rem; margin-bottom: 0.75rem;">
+          <li><strong>Spotify:</strong> Acesse <a href="https://podcasters.spotify.com" target="_blank" style="color: var(--primary);">podcasters.spotify.com</a> → "Adicionar podcast existente" → Cole o link do RSS.</li>
+          <li><strong>Apple Podcasts:</strong> Acesse <a href="https://podcastsconnect.apple.com" target="_blank" style="color: var(--primary);">podcastsconnect.apple.com</a> → Clique em "+" → "Novo programa via RSS" → Cole o link.</li>
+          <li><strong>Amazon Music:</strong> Acesse <a href="https://podcasters.amazon.com" target="_blank" style="color: var(--primary);">podcasters.amazon.com</a> → Submeta a mesma URL de RSS.</li>
+        </ul>
+        <p>
+          As plataformas atualizarão automaticamente todos os novos episódios assim que você clicar em Publicar aqui no Studio!
+        </p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- Load YouTube IFrame Player API -->
+<script src="https://www.youtube.com/iframe_api"></script>
+
+<script>
+  let ytPlayer = null;
+  let currentVideoId = "5CyVFrCs5Pk";
+  let playerTimer = null;
+  let pollStatusInterval = null;
+
+  function switchTab(tabId) {
+    document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    document.getElementById('tab-' + tabId).classList.add('active');
+    document.getElementById('tab-btn-' + tabId).classList.add('active');
+
+    if (tabId === 'channel') {
+      loadChannelVideos();
+    } else if (tabId === 'episodes') {
+      loadFeedEpisodes();
+    }
+  }
+
+  // YouTube API callback
+  function onYouTubeIframeAPIReady() {
+    ytPlayer = new YT.Player('youtube-player', {
+      videoId: currentVideoId,
+      playerVars: {
+        playsinline: 1,
+        rel: 0,
+        modestbranding: 1
+      },
+      events: {
+        'onReady': onPlayerReady
+      }
+    });
+  }
+
+  function onPlayerReady(event) {
+    if (playerTimer) clearInterval(playerTimer);
+    playerTimer = setInterval(updatePlayerTimeDisplay, 500);
+  }
+
+  function formatSeconds(secs) {
+    secs = Math.floor(secs || 0);
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+
+  function parseFormattedTime(str) {
+    if (!str || !str.trim()) return null;
+    const parts = str.trim().split(':').map(Number);
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 1) return parts[0];
+    return null;
+  }
+
+  function updatePlayerTimeDisplay() {
+    if (ytPlayer && ytPlayer.getCurrentTime) {
+      const current = ytPlayer.getCurrentTime() || 0;
+      document.getElementById('current-player-time').textContent = formatSeconds(current);
+    }
+  }
+
+  function captureTimestamp(type) {
+    if (!ytPlayer || !ytPlayer.getCurrentTime) return;
+    const current = Math.floor(ytPlayer.getCurrentTime());
+    const formatted = formatSeconds(current);
+
+    if (type === 'start') {
+      document.getElementById('display-start').textContent = formatted;
+      document.getElementById('cut-start-input').value = formatted;
+    } else {
+      document.getElementById('display-end').textContent = formatted;
+      document.getElementById('cut-end-input').value = formatted;
+    }
+    updateCutSummary();
+  }
+
+  function syncManualTimestamp() {
+    const startVal = document.getElementById('cut-start-input').value.trim();
+    const endVal = document.getElementById('cut-end-input').value.trim();
+    document.getElementById('display-start').textContent = startVal || "00:00:00";
+    document.getElementById('display-end').textContent = endVal || "00:00:00";
+    updateCutSummary();
+  }
+
+  function resetCut() {
+    document.getElementById('cut-start-input').value = "";
+    document.getElementById('cut-end-input').value = "";
+    document.getElementById('display-start').textContent = "00:00:00";
+    document.getElementById('display-end').textContent = "00:00:00";
+    updateCutSummary();
+  }
+
+  function updateCutSummary() {
+    const startSec = parseFormattedTime(document.getElementById('cut-start-input').value);
+    const endSec = parseFormattedTime(document.getElementById('cut-end-input').value);
+    const summaryEl = document.getElementById('cut-duration-text');
+
+    if (startSec !== null && endSec !== null) {
+      const diff = endSec - startSec;
+      if (diff <= 0) {
+        summaryEl.innerHTML = `<span style="color: var(--danger);">⚠️ O término deve ser posterior ao início.</span>`;
+      } else if (diff < 900) {
+        summaryEl.innerHTML = `<span style="color: var(--warning);">⚠️ Corte curto (${Math.floor(diff/60)} min). Mínimo recomendado: 15 min.</span>`;
+      } else {
+        const m = Math.floor(diff / 60);
+        const s = diff % 60;
+        summaryEl.innerHTML = `<span style="color: var(--success); font-weight: 600;">✅ ${m} min ${s} seg de pregação selecionada</span>`;
+      }
+    } else if (startSec !== null || endSec !== null) {
+      summaryEl.innerHTML = `<span style="color: var(--warning);">Defina início e fim para recortar.</span>`;
+    } else {
+      summaryEl.textContent = "Vídeo completo (sem corte)";
+    }
+  }
+
+  async function loadVideo(id, title) {
+    currentVideoId = id;
+    document.getElementById('video-input').value = id;
+    if (title) document.getElementById('episode-title').value = title;
+
+    if (ytPlayer && ytPlayer.loadVideoById) {
+      ytPlayer.loadVideoById(id);
+    }
+    resetCut();
+    switchTab('studio');
+
+    // Also fetch preview details if title is empty
+    if (!title) {
+      try {
+        const res = await fetch('/api/preview', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({video_id: id})
+        });
+        const data = await res.json();
+        if (data.title) {
+          document.getElementById('episode-title').value = data.title;
+        }
+      } catch (e) {
+        console.error("Preview error", e);
+      }
+    }
+  }
+
+  function loadVideoFromInput() {
+    const raw = document.getElementById('video-input').value.trim();
+    if (!raw) return;
+    loadVideo(raw);
+  }
+
+  async function loadChannelVideos(force = false) {
+    const grid = document.getElementById('channel-video-grid');
+    if (force) {
+      grid.innerHTML = '<div style="padding: 2rem; text-align: center; color: var(--text-muted); grid-column: 1 / -1;">Buscando vídeos no YouTube...</div>';
+    }
+
+    try {
+      const res = await fetch('/api/channel-videos');
+      const list = await res.json();
+      if (!Array.isArray(list) || list.length === 0) {
+        grid.innerHTML = '<div style="padding: 2rem; text-align: center; color: var(--text-muted); grid-column: 1 / -1;">Nenhuma transmissão encontrada.</div>';
+        return;
+      }
+
+      grid.innerHTML = list.map(v => `
+        <article class="video-item">
+          <img src="${v.thumbnail}" alt="" class="video-thumb" loading="lazy">
+          <div class="video-content">
+            <h3 class="video-title" title="${v.title}">${v.title}</h3>
+            <div class="video-meta">
+              <span>⏱️ ${v.duration_formatted}</span>
+              ${v.published ? '<span style="color: var(--success); font-weight: 600;">✅ Já no Feed</span>' : (v.is_live ? '<span style="color: var(--danger); font-weight: 600;">🔴 Ao Vivo</span>' : '<span style="color: var(--primary);">Disponível</span>')}
+            </div>
+            <button type="button" class="btn ${v.published ? 'btn-outline' : 'btn-primary'}" style="width: 100%; font-size: 0.8rem;" onclick="loadVideo('${v.id}', ${JSON.stringify(v.title)})">
+              ⚡ Carregar no Studio
+            </button>
+          </div>
+        </article>
+      `).join('');
+    } catch (err) {
+      grid.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--danger); grid-column: 1 / -1;">Erro ao carregar vídeos: ${err.message}</div>`;
+    }
+  }
+
+  async function loadFeedEpisodes() {
+    const tbody = document.getElementById('episodes-tbody');
+    try {
+      const res = await fetch('/api/episodes');
+      const list = await res.json();
+      document.getElementById('episodes-count').textContent = list.length;
+
+      if (!Array.isArray(list) || list.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 2rem;">Nenhum episódio publicado ainda. Publique o primeiro!</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = list.map(ep => {
+        const m = Math.floor((ep.duration || 0) / 60);
+        return `
+          <tr>
+            <td>
+              <strong>${ep.title}</strong>
+              <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">${ep.pubDate}</div>
+            </td>
+            <td>${m > 0 ? `${m} min` : '-'}</td>
+            <td>
+              <audio controls preload="none">
+                <source src="${ep.audio_url}" type="audio/mpeg">
+                Seu navegador não suporta reprodução de áudio.
+              </audio>
+            </td>
+            <td>
+              <a href="${ep.audio_url}" target="_blank" download class="btn btn-outline" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;">
+                📥 Baixar MP3
+              </a>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--danger); padding: 2rem;">Erro ao carregar feed: ${err.message}</td></tr>`;
+    }
+  }
+
+  async function startPublish() {
+    const videoInput = document.getElementById('video-input').value.trim();
+    const title = document.getElementById('episode-title').value.trim();
+    const start = document.getElementById('cut-start-input').value.trim();
+    const end = document.getElementById('cut-end-input').value.trim();
+    const gitPush = document.getElementById('git-push-check').checked;
+
+    if (!videoInput) {
+      alert("Por favor, selecione ou informe o link/ID do vídeo!");
+      return;
+    }
+
+    const publishBtn = document.getElementById('publish-btn');
+    publishBtn.disabled = true;
+    document.getElementById('progress-container').style.display = 'block';
+    document.getElementById('terminal-box').textContent = "Iniciando tarefa de publicação...";
+
+    try {
+      const res = await fetch('/api/publish', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          video_id: videoInput,
+          title: title,
+          start: start || null,
+          end: end || null,
+          git_push: gitPush
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        alert("Erro: " + (data.error || "Falha ao iniciar"));
+        publishBtn.disabled = false;
+        return;
+      }
+
+      // Start polling status
+      pollStatus();
+      if (pollStatusInterval) clearInterval(pollStatusInterval);
+      pollStatusInterval = setInterval(pollStatus, 1500);
+    } catch (err) {
+      alert("Erro na requisição: " + err.message);
+      publishBtn.disabled = false;
+    }
+  }
+
+  async function pollStatus() {
+    try {
+      const res = await fetch('/api/status');
+      const data = await res.json();
+
+      document.getElementById('task-message').textContent = data.message || "";
+      document.getElementById('task-progress-pct').textContent = (data.progress || 0) + "%";
+      document.getElementById('progress-fill').style.width = (data.progress || 0) + "%";
+
+      if (Array.isArray(data.logs)) {
+        const term = document.getElementById('terminal-box');
+        term.textContent = data.logs.join('\n');
+        term.scrollTop = term.scrollHeight;
+      }
+
+      if (data.status === 'success' || data.status === 'error') {
+        clearInterval(pollStatusInterval);
+        document.getElementById('publish-btn').disabled = false;
+        if (data.status === 'success') {
+          loadFeedEpisodes();
+          loadChannelVideos();
+        }
+      }
+    } catch (e) {
+      console.error("Status polling error", e);
+    }
+  }
+
+  async function loadConfig() {
+    try {
+      const res = await fetch('/api/config');
+      const cfg = await res.json();
+      document.getElementById('cfg-bucket').value = cfg.R2_BUCKET_NAME || '';
+      document.getElementById('cfg-r2-domain').value = cfg.R2_PUBLIC_DOMAIN || '';
+      document.getElementById('cfg-email').value = cfg.PODCAST_EMAIL || '';
+      document.getElementById('cfg-feed-url').value = cfg.PODCAST_FEED_URL || '';
+      document.getElementById('guide-feed-url').textContent = cfg.PODCAST_FEED_URL || '';
+    } catch (e) {}
+  }
+
+  async function testR2Connection() {
+    const resEl = document.getElementById('r2-test-result');
+    resEl.textContent = "Testando conexão com o Cloudflare R2...";
+    resEl.style.color = "var(--text-muted)";
+    try {
+      const res = await fetch('/api/test-r2', { method: 'POST' });
+      const data = await res.json();
+      if (data.ok) {
+        resEl.textContent = "✅ " + data.message;
+        resEl.style.color = "var(--success)";
+      } else {
+        resEl.textContent = "❌ Falha: " + data.error;
+        resEl.style.color = "var(--danger)";
+      }
+    } catch (err) {
+      resEl.textContent = "❌ Erro: " + err.message;
+      resEl.style.color = "var(--danger)";
+    }
+  }
+
+  // Initial loads
+  loadConfig();
+  loadFeedEpisodes();
+  loadChannelVideos();
+</script>
+
+</body>
+</html>

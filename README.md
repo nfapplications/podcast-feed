@@ -1,51 +1,77 @@
 # Podcast Núcleo da Fé
 
-Este projeto acompanha as transmissões do [canal Núcleo da Fé](https://www.youtube.com/@nucleodafelive/streams). Quando um vídeo fica pelo menos 10 minutos mais curto e mantém a nova duração em duas verificações diárias, o workflow abre uma issue para revisão. Depois de conferir que o vídeo contém apenas a pregação, execute o workflow manualmente com o ID do vídeo. Ele gera um MP3, envia ao Cloudflare R2, atualiza `podcast.xml` e publica o feed pelo GitHub Pages.
+Sistema semi-automatizado de geração e publicação de podcast para a igreja Núcleo da Fé. Transforma as transmissões ao vivo do YouTube em episódios de áudio no padrão Apple Podcasts e Spotify, hospedados no **Cloudflare R2** e distribuídos via **GitHub Pages**.
 
-O primeiro registro de um vídeo que já está curto aparece no relatório como **“Curto, sem duração anterior registrada”**. Ele também pode ser publicado manualmente após revisão. A publicação automática fica desativada para evitar que cultos completos entrem no podcast por engano.
+---
 
-## Preparação
+## ⚡ Estúdio Web (Recomendado - 1-Clique)
 
-1. Coloque estes arquivos no repositório `nfapplications/podcast-feed` e habilite **GitHub Pages → Build and deployment → GitHub Actions**. A publicação por branch não é acionada por commits feitos com `GITHUB_TOKEN`.
-2. Crie um bucket Cloudflare R2 e associe um **domínio público próprio**. Use uma URL estável para os MP3; links assinados expiram e `r2.dev` é destinado a testes.
-3. Prepare uma capa quadrada para o podcast, entre **1400 × 1400 e 3000 × 3000 pixels**, e hospede-a em uma URL HTTPS pública.
-4. Configure as variáveis e os segredos abaixo em **Settings → Secrets and variables → Actions**.
+O jeito mais fácil e rápido de gerenciar o podcast é através do **Podcast Studio local**. Ele possui reprodutor visual com marcação de início e fim da pregação com 1 clique, integração direta com o Cloudflare R2, e envia automaticamente as atualizações para o GitHub Pages.
 
-| Tipo | Nome | Valor |
-| --- | --- | --- |
-| Variável | `PODCAST_EMAIL` | Caixa de e-mail acessível para verificar a propriedade do podcast. Fica pública no RSS. |
-| Variável | `PODCAST_IMAGE_URL` | URL HTTPS da capa. |
-| Variável | `PODCAST_FEED_URL` | URL final do RSS, por exemplo `https://nfapplications.github.io/podcast-feed/podcast.xml`. |
-| Variável | `R2_ACCOUNT_ID` | ID da conta Cloudflare. |
-| Variável | `R2_BUCKET_NAME` | Nome do bucket R2. |
-| Variável | `R2_PUBLIC_DOMAIN` | Domínio público do bucket, por exemplo `https://audio.exemplo.com`. |
-| Segredo | `R2_ACCESS_KEY_ID` | Chave de acesso R2 com permissão no bucket. |
-| Segredo | `R2_SECRET_ACCESS_KEY` | Chave secreta R2. |
-
-Não coloque as chaves do R2 em arquivos versionados. O workflow de varredura funciona sem R2 ou capa; esses itens só são necessários para publicar o primeiro episódio.
-
-## Uso
-
-1. Abra **Actions → Monitorar e publicar podcast → Run workflow** e deixe `publish_video_id` vazio. Isso registra as durações iniciais.
-2. O workflow verifica o canal todos os dias às **10h17, horário de São Paulo**. Quando detecta um recorte estável ou um vídeo novo já curto, abre uma issue com o link do vídeo. A execução também mostra uma tabela com todos os estados.
-3. Confira no YouTube se o vídeo contém apenas a pregação. Rode o mesmo workflow e preencha `publish_video_id` com os 11 caracteres do ID do vídeo.
-   - **Corte de transmissões longas:** Se o culto não tiver sido recortado no YouTube Studio, você pode preencher `start_time` (ex: `00:35:00`) e `end_time` (ex: `01:25:00`) diretamente ao disparar o workflow. O FFmpeg extrairá apenas o trecho da pregação.
-4. Após a primeira publicação e implantação do Pages, cadastre o RSS no Spotify for Creators e no Apple Podcasts Connect. As plataformas passarão a consultar o feed para novos episódios.
-
-O script só publica IDs vistos na varredura, já curtos e cuja duração não mudou desde a última leitura (ou com cortes manuais definidos via parâmetros/`episodes.json`). O GUID `yt:ID` no próprio RSS impede duplicações, inclusive se um workflow for executado novamente. O áudio é verificado por `HEAD` e `Range` antes de atualizar o feed.
-
-## Execução local
-
-Requer Python 3.12+, FFmpeg e `yt-dlp`:
+### Como iniciar o Estúdio:
 
 ```bash
-python -m pip install -r requirements.txt
-python scan_videos.py --dry-run
-python processar_podcast.py --video-id ID_DO_VIDEO --dry-run
-# Ou com corte de tempo manual:
-python processar_podcast.py --video-id ID_DO_VIDEO --start 00:35:00 --end 01:20:00 --dry-run
+./studio.sh
 ```
 
-`episodes.json` permite cortes manuais de vídeos longos com `start` e `end` em `HH:MM:SS`, caso seja necessário. O modo padrão do script processa apenas essas entradas; o workflow de publicação usa o ID já revisado na varredura.
+O comando verificará as dependências e abrirá automaticamente no navegador em:  
+**`http://localhost:8000`**
 
-Como a única cópia atual está no YouTube, o processamento depende de `yt-dlp` e pode falhar se o YouTube alterar o acesso aos vídeos. Também é preciso confirmar os direitos de reutilização do conteúdo e as condições de uso do YouTube. Guardar os arquivos originais dos próximos cultos tornará o fluxo mais confiável.
+### Funcionalidades do Estúdio:
+1. **Transmissões do Canal:** Lista automaticamente os vídeos e cultos recentes do canal `@nucleodafelive` com indicação de status e duração.
+2. **Reprodutor com Marcador de Tempo:** Assista ao vídeo e clique em `⏱️ Marcar Posição Atual` no início e fim do sermão para definir os pontos de corte exatos.
+3. **Publicação 1-Clique:**
+   - Baixa o áudio do YouTube sem bloqueio de bot (IP residencial/local).
+   - Corta o sermão e normaliza o áudio para o padrão da indústria (-16 LUFS) com FFmpeg.
+   - Faz upload direto do MP3 para o Cloudflare R2 (`podcast-nucleodafe`).
+   - Atualiza `podcast.xml` e envia o commit/push para o GitHub Pages.
+4. **Player de Episódios:** Ouça diretamente no navegador os episódios já publicados no Cloudflare R2.
+5. **Diagnóstico R2:** Teste de conectividade com o bucket e link direto para cadastro no Spotify e Apple Podcasts.
+
+---
+
+## 🛠️ Preparação e Credenciais
+
+As credenciais do Cloudflare R2 e configurações do canal ficam salvas no arquivo `.env` (ignorado no Git):
+
+| Variável | Descrição |
+| --- | --- |
+| `PODCAST_EMAIL` | E-mail do responsável (`wfmoura@gmail.com`). |
+| `PODCAST_FEED_URL` | `https://nfapplications.github.io/podcast-feed/podcast.xml` |
+| `PODCAST_IMAGE_URL` | Capa do podcast no Cloudflare R2. |
+| `R2_ACCOUNT_ID` | ID da conta Cloudflare. |
+| `R2_BUCKET_NAME` | `podcast-nucleodafe` |
+| `R2_PUBLIC_DOMAIN` | `https://pub-782ee0b9c17b40bcae3d6d60d29ee756.r2.dev` |
+| `R2_ACCESS_KEY_ID` | Chave de acesso S3 do R2. |
+| `R2_SECRET_ACCESS_KEY` | Chave secreta S3 do R2. |
+
+---
+
+## 📡 Links de Distribuição
+
+- **Feed RSS Oficial:** `https://nfapplications.github.io/podcast-feed/podcast.xml`
+- **Armazenamento de Áudio:** Cloudflare R2 `podcast-nucleodafe`
+- **Repositório:** `nfapplications/podcast-feed`
+
+### Cadastro nas Plataformas:
+- **Spotify:** [podcasters.spotify.com](https://podcasters.spotify.com) → Adicionar podcast existente → Cole a URL do RSS.
+- **Apple Podcasts:** [podcastsconnect.apple.com](https://podcastsconnect.apple.com) → Adicionar podcast via RSS → Cole a URL do RSS.
+- **Amazon Music:** [podcasters.amazon.com](https://podcasters.amazon.com) → Submeter RSS.
+
+---
+
+## 💻 Uso via Linha de Comando (CLI)
+
+```bash
+# Ativar ambiente virtual
+source .venv/bin/activate
+
+# Listar transmissões do canal
+python scan_videos.py --dry-run
+
+# Publicar com corte de pregação (ex: 35 min a 1h20)
+python processar_podcast.py --video-id 5CyVFrCs5Pk --start 00:35:00 --end 01:20:00
+
+# Publicar sem corte (vídeos já editados de até 75 min)
+python processar_podcast.py --video-id 5CyVFrCs5Pk --force
+```

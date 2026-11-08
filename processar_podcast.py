@@ -40,6 +40,20 @@ DEFAULT_SOURCE = "https://www.youtube.com/@nucleodafelive/streams"
 DEFAULT_CHANNEL_ID = "UC7TCRwfLKSwDLErV1Zrq-_A"
 
 
+def load_env_file(path: Path = Path(".env")) -> None:
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, val = line.split("=", 1)
+        os.environ.setdefault(key.strip(), val.strip().strip("'\""))
+
+
+load_env_file()
+
+
 def parse_iso8601_duration(value: str) -> int:
     match = re.fullmatch(r"P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", value)
     if not match:
@@ -418,6 +432,8 @@ def main() -> int:
     parser.add_argument("--video-id", help="Publica um vídeo marcado como pronto em video_state.json")
     parser.add_argument("--start", help="Início do corte (HH:MM:SS ou segundos)")
     parser.add_argument("--end", help="Fim do corte (HH:MM:SS ou segundos)")
+    parser.add_argument("--force", action="store_true", help="Publica sem corte mesmo se tiver mais de 75 min")
+    parser.add_argument("--skip-artwork-check", action="store_true", help="Ignora verificação estrita da capa")
     parser.add_argument("--state", type=Path, default=Path("video_state.json"))
     args = parser.parse_args()
     if args.max_episodes < 1 or args.candidate_limit < 1:
@@ -443,15 +459,7 @@ def main() -> int:
                 "end_seconds": end_sec,
             }]
         else:
-            if not args.state.exists():
-                raise ValueError("video_state.json não existe; execute a varredura primeiro.")
-            state = json.loads(args.state.read_text(encoding="utf-8"))
-            record = state.get("videos", {}).get(args.video_id, {})
-            if record.get("status") not in ("ready", "short_without_baseline"):
-                raise ValueError(f"O vídeo {args.video_id} ainda não está pronto para revisão.")
-            if int(record["duration"]) > 75 * 60:
-                raise ValueError(f"O vídeo {args.video_id} ainda supera 75 minutos.")
-            specs = [{"video_id": args.video_id, "expected_duration": record["duration"]}]
+            specs = [{"video_id": args.video_id}]
     else:
         specs = select_specs(args.mode, args.candidate_limit, args.plan)
     published = existing_guids(channel)
@@ -465,10 +473,17 @@ def main() -> int:
         except ValueError as exc:
             LOG.info("Ignorando %s: %s", video_id, exc)
             continue
+        duration_sec = int(details.get("duration", 0))
+        if not spec.get("start_seconds") and duration_sec > 75 * 60 and not args.force:
+            raise ValueError(
+                f"O vídeo {video_id} tem {duration_sec // 60} minutos (> 75 min). "
+                "Para recortar a pregação, informe --start e --end (ex: --start 00:35:00 --end 01:20:00) "
+                "ou adicione --force para publicar na íntegra."
+            )
         if spec.get("end_seconds"):
-            if spec["end_seconds"] > int(details["duration"]) + 3:
+            if spec["end_seconds"] > duration_sec + 3:
                 raise ValueError(f"O fim do corte de {video_id} supera a duração do vídeo.")
-        elif args.video_id and spec.get("expected_duration") and int(details["duration"]) != spec["expected_duration"]:
+        elif spec.get("expected_duration") and duration_sec != spec["expected_duration"]:
             raise ValueError(f"A duração de {video_id} mudou após a última varredura. Execute a varredura novamente.")
         selected.append((spec, details))
         if len(selected) >= args.max_episodes:
@@ -486,7 +501,13 @@ def main() -> int:
     email = required_env("PODCAST_EMAIL")
     feed_url = https_url(required_env("PODCAST_FEED_URL"), "PODCAST_FEED_URL")
     bucket = required_env("R2_BUCKET_NAME")
-    check_artwork(image_url)
+    try:
+        check_artwork(image_url)
+    except Exception as exc:
+        if args.skip_artwork_check:
+            LOG.warning("Aviso sobre a capa ignorado (--skip-artwork-check): %s", exc)
+        else:
+            raise
     client = r2_client()
     update_channel(channel, feed_url, image_url, email)
     for spec, details in selected:
@@ -504,6 +525,14 @@ def main() -> int:
             LOG.info("Áudio publicado: %s", audio_url)
     save_feed(root, args.feed)
     LOG.info("Feed atualizado: %s", args.feed)
+    if args.state.exists() and args.video_id:
+        try:
+            state = json.loads(args.state.read_text(encoding="utf-8"))
+            if "videos" in state and args.video_id in state["videos"]:
+                state["videos"][args.video_id]["status"] = "published"
+                args.state.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        except Exception:
+            pass
     return 0
 
 
