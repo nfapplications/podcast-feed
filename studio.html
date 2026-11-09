@@ -1679,8 +1679,13 @@
       return;
     }
 
-    const start = document.getElementById('cut-start-input')?.value.trim() || null;
-    const end = document.getElementById('cut-end-input')?.value.trim() || null;
+    let start = document.getElementById('cut-start-input')?.value.trim() || null;
+    let end = document.getElementById('cut-end-input')?.value.trim() || null;
+    if (start === "00:00:00" && end === "00:00:00") {
+      start = null;
+      end = null;
+    }
+    const isCutting = (start && end && start !== end);
     const quality = getSelectedQuality();
     const btnMp4 = document.getElementById('btn-download-mp4');
     const hudBox = document.getElementById('manual-hud-box');
@@ -1721,7 +1726,7 @@
 
       // Generation started! Show Cyber HUD
       if (hudBox) hudBox.style.display = 'block';
-      btnMp4.textContent = "⏳ Baixando & Recortando...";
+      btnMp4.textContent = isCutting ? "⏳ Baixando & Recortando..." : "⏳ Otimizando Vídeo...";
 
       if (manualPollInterval) clearInterval(manualPollInterval);
       manualPollInterval = setInterval(pollManualExportStatus, 1000);
@@ -1755,6 +1760,7 @@
       if (stageEl && data.stage) {
         const stageMap = {
           downloading: "📥 BAIXANDO STREAM",
+          packaging: "⚡ VÍDEO COMPLETO",
           encoding: "⚙️ RECORTANDO COM FFMPEG",
           artwork: "🖼️ GERANDO CAPA",
           complete: "✅ VÍDEO CONCLUÍDO",

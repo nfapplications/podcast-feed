@@ -257,6 +257,12 @@ def publish_worker(
 
         start_sec = seconds(start_str) if start_str and start_str.strip() else None
         end_sec = seconds(end_str) if end_str and end_str.strip() else None
+        if start_sec == 0 and end_sec == 0:
+            start_sec = None
+            end_sec = None
+        if start_sec is not None and end_sec is not None and start_sec == end_sec:
+            start_sec = None
+            end_sec = None
         if (start_sec is not None) ^ (end_sec is not None):
             raise ValueError("Defina ambos início e fim para realizar o corte.")
         if start_sec is not None and end_sec is not None:
@@ -453,6 +459,12 @@ def spotify_upload_worker(
 
         start_sec = seconds(start_str) if start_str and start_str.strip() else None
         end_sec = seconds(end_str) if end_str and end_str.strip() else None
+        if start_sec == 0 and end_sec == 0:
+            start_sec = None
+            end_sec = None
+        if start_sec is not None and end_sec is not None and start_sec == end_sec:
+            start_sec = None
+            end_sec = None
 
         if not art_path.exists():
             set_spotify_state("preparing", "Gerando arte quadrada do episódio...", stage="artwork")
@@ -529,6 +541,22 @@ def manual_export_worker(
 
         start_sec = seconds(start_str) if start_str and start_str.strip() else None
         end_sec = seconds(end_str) if end_str and end_str.strip() else None
+        if start_sec == 0 and end_sec == 0:
+            start_sec = None
+            end_sec = None
+        if start_sec is not None and end_sec is not None and start_sec == end_sec:
+            start_sec = None
+            end_sec = None
+        if start_sec == 0 and end_sec == 0:
+            start_sec = None
+            end_sec = None
+        if start_sec is not None and end_sec is not None and start_sec == end_sec:
+            start_sec = None
+            end_sec = None
+
+        is_cut = (start_sec is not None and end_sec is not None)
+        enc_stage = "encoding" if is_cut else "packaging"
+        enc_action = "Recortando e otimizando vídeo MP4" if is_cut else "Otimizando vídeo completo"
 
         if not art_path.exists():
             set_manual_export("running", "Gerando capa quadrada do episódio...", 10, stage="artwork", video_id=video_id)
@@ -554,11 +582,11 @@ def manual_export_worker(
                 mapped = int(55 + (pct * 0.43))
                 set_manual_export(
                     "running",
-                    f"Recortando e otimizando vídeo MP4 (+faststart)... {pct:.1f}%",
+                    f"{enc_action} (+faststart)... {pct:.1f}%",
                     progress=mapped,
                     speed=spd,
                     eta=eta,
-                    stage="encoding",
+                    stage=enc_stage,
                     video_id=video_id,
                 )
 
@@ -566,13 +594,14 @@ def manual_export_worker(
                 set_manual_export("running", f"Baixando stream ({quality}p)...", 10, stage="downloading", video_id=video_id)
                 v_src = download_video(video_id, Path(tmp), quality=quality, progress_callback=on_dl)
 
-                set_manual_export("running", "Recortando e codificando MP4 com FFmpeg...", 55, stage="encoding", video_id=video_id)
+                set_manual_export("running", f"{enc_action} com FFmpeg...", 55, stage=enc_stage, video_id=video_id)
                 encode_mp4(v_src, mp4_path, start_sec, end_sec, progress_callback=on_enc)
 
         v_size_mb = mp4_path.stat().st_size // 1024 // 1024
+        completed_msg = f"Vídeo recortado e pronto! ({v_size_mb} MB)" if is_cut else f"Vídeo completo pronto para download! ({v_size_mb} MB)"
         set_manual_export(
             "completed",
-            f"Vídeo recortado e pronto! ({v_size_mb} MB)",
+            completed_msg,
             progress=100,
             speed="Concluído",
             eta="00:00",

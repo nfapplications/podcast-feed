@@ -376,6 +376,25 @@ def encode_mp4(
     else:
         target_dur = 1.0
 
+    # Quando não há corte, executa remux ultra rápido (-c copy) com +faststart em 2 segundos
+    if start is None and end is None:
+        try:
+            if progress_callback:
+                progress_callback(50.0, "Cópia direta", "00:02")
+            command = [
+                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                "-i", str(source),
+                "-c", "copy",
+                "-movflags", "+faststart",
+                str(output),
+            ]
+            run(command)
+            if progress_callback:
+                progress_callback(100.0, "Concluído", "00:00")
+            return output.stat().st_size, int(total_dur)
+        except Exception as copy_err:
+            LOG.warning("Cópia direta (-c copy) falhou, usando re-encoding: %s", copy_err)
+
     command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
     if start is not None and end is not None:
         command += ["-ss", str(start), "-to", str(end)]
