@@ -138,7 +138,7 @@ def extract_transcript_chunks(video_id: str) -> list[str]:
 
 def call_gemini_api(prompt_text: str, api_key: str) -> dict[str, Any]:
     """Chama a API do Google Gemini usando modelos Flash ultrarrápidos e econômicos."""
-    models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+    models_to_try = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.5-flash", "gemini-2.5-flash"]
     last_err = None
 
     for model in models_to_try:
@@ -156,7 +156,10 @@ def call_gemini_api(prompt_text: str, api_key: str) -> dict[str, Any]:
         req = urllib.request.Request(
             url,
             data=body_bytes,
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": api_key,
+            },
             method="POST"
         )
         try:
