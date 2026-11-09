@@ -2037,15 +2037,15 @@
       const data = await res.json();
 
       if (!data.ok) {
-        if (data.error && data.error.includes("GEMINI_API_KEY")) {
-          const userKey = prompt("Para sugerir o corte via IA, informe sua chave da API Google Gemini:\n(Ela será salva localmente no seu arquivo .env)");
+        if (data.error && (data.error.includes("GEMINI_API_KEY") || data.error.includes("401") || data.error.includes("Unauthorized"))) {
+          const userKey = prompt("A chave da API Gemini é inválida ou expirou (deve começar com AIzaSy...).\n\nObtenha gratuitamente em: https://aistudio.google.com/app/apikey\n\nCole a chave correta da API Gemini aqui:");
           if (userKey && userKey.trim()) {
             await fetch('/api/save-gemini-key', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ gemini_api_key: userKey.trim() })
             });
-            showToast("🔑 Chave Gemini configurada! Repetindo análise...");
+            showToast("🔑 Chave Gemini salva com sucesso! Repetindo análise...");
             loadConfig();
             btn.disabled = false;
             btn.innerHTML = origText;

@@ -169,6 +169,12 @@ def call_gemini_api(prompt_text: str, api_key: str) -> dict[str, Any]:
                         raw_text = parts[0].get("text", "")
                         return json.loads(raw_text)
         except urllib.error.HTTPError as http_err:
+            if http_err.code == 401:
+                raise ValueError(
+                    "Chave de API do Gemini inválida ou não autorizada (HTTP 401 Unauthorized). "
+                    "A chave correta deve começar com 'AIzaSy...' e pode ser obtida gratuitamente em: "
+                    "https://aistudio.google.com/app/apikey"
+                )
             last_err = http_err
             LOG.warning("Erro HTTP chamando modelo %s: %s", model, http_err)
             continue
@@ -260,3 +266,4 @@ def format_seconds(secs: int) -> str:
     m = (secs % 3600) // 60
     s = secs % 60
     return f"{h:02d}:{m:02d}:{s:02d}"
+
