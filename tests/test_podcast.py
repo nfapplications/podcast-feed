@@ -102,6 +102,35 @@ class PodcastTests(unittest.TestCase):
         state_after = get_spotify_state()
         self.assertEqual(state_after["status"], "idle")
 
+    def test_cut_detector_chapters_and_description(self):
+        from cut_detector import check_chapters_or_description, format_seconds
+
+        self.assertEqual(format_seconds(3665), "01:01:05")
+
+        # Test chapters detection
+        details_with_ch = {
+            "chapters": [
+                {"title": "Louvor e Adoração", "start_time": 0, "end_time": 2400},
+                {"title": "Ministração da Palavra", "start_time": 2400, "end_time": 5400},
+                {"title": "Oração Final", "start_time": 5400, "end_time": 6000},
+            ]
+        }
+        res_ch = check_chapters_or_description(details_with_ch)
+        self.assertIsNotNone(res_ch)
+        self.assertEqual(res_ch["start"], "00:40:00")
+        self.assertEqual(res_ch["end"], "01:30:00")
+        self.assertEqual(res_ch["source"], "capitulos_youtube")
+
+        # Test description detection
+        details_with_desc = {
+            "description": "Culto de Domingo\n00:00 Louvor\n00:48:30 Pregação da Palavra\n01:35:00 Oração\n"
+        }
+        res_desc = check_chapters_or_description(details_with_desc)
+        self.assertIsNotNone(res_desc)
+        self.assertEqual(res_desc["start"], "00:48:30")
+        self.assertEqual(res_desc["end"], "01:35:00")
+        self.assertEqual(res_desc["source"], "descricao_youtube")
+
 
 if __name__ == "__main__":
     unittest.main()

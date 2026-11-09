@@ -694,6 +694,8 @@ class StudioHandler(BaseHTTPRequestHandler):
         if path == "/api/config":
             load_env_file()
             feed_url = os.environ.get("PODCAST_FEED_URL", "")
+            gemini_key = os.environ.get("GEMINI_API_KEY", "")
+            masked_gemini = f"{gemini_key[:4]}...{gemini_key[-4:]}" if len(gemini_key) > 8 else ("Configurada" if gemini_key else "")
             self.send_json({
                 "R2_ACCOUNT_ID": os.environ.get("R2_ACCOUNT_ID", ""),
                 "R2_BUCKET_NAME": os.environ.get("R2_BUCKET_NAME", ""),
@@ -702,6 +704,8 @@ class StudioHandler(BaseHTTPRequestHandler):
                 "PODCAST_FEED_URL": feed_url,
                 "VODCAST_FEED_URL": feed_url.replace("podcast.xml", "vodcast.xml"),
                 "PODCAST_IMAGE_URL": os.environ.get("PODCAST_IMAGE_URL", ""),
+                "HAS_GEMINI_KEY": bool(gemini_key),
+                "GEMINI_API_KEY_MASKED": masked_gemini,
             })
             return
 
@@ -832,6 +836,46 @@ class StudioHandler(BaseHTTPRequestHandler):
         if path == "/api/spotify-cancel":
             cancel_spotify_upload()
             self.send_json({"ok": True, "message": "Automação do Spotify cancelada."})
+            return
+
+        if path == "/api/suggest-cut":
+            raw_id = body.get("video_id", "")
+            try:
+                video_id = parse_video_id(raw_id)
+            except ValueError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=400)
+                return
+
+            api_key = body.get("gemini_api_key")
+            try:
+                from cut_detector import suggest_sermon_cut
+                result = suggest_sermon_cut(video_id, api_key)
+                self.send_json({"ok": True, **result})
+            except Exception as exc:
+                LOG.exception("Erro ao sugerir corte com IA: %s", exc)
+                self.send_json({"ok": False, "error": str(exc)}, status=400)
+            return
+
+        if path == "/api/save-gemini-key":
+            api_key = body.get("gemini_api_key", "").strip()
+            if not api_key:
+                self.send_json({"error": "Chave não informada."}, status=400)
+                return
+            env_path = Path(".env")
+            lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
+            new_lines = []
+            found = False
+            for l in lines:
+                if l.startswith("GEMINI_API_KEY="):
+                    new_lines.append(f"GEMINI_API_KEY={api_key}")
+                    found = True
+                else:
+                    new_lines.append(l)
+            if not found:
+                new_lines.append(f"GEMINI_API_KEY={api_key}")
+            env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+            os.environ["GEMINI_API_KEY"] = api_key
+            self.send_json({"ok": True, "message": "Chave Gemini salva com sucesso no arquivo .env!"})
             return
 
         if path == "/api/prepare-export":
