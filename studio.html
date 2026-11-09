@@ -664,6 +664,19 @@
           </div>
 
           <div class="form-group" style="margin-top: 0.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+              <label for="episode-description" style="margin-bottom: 0;">Descrição do Episódio (Spotify & Feeds)</label>
+              <button type="button" class="btn btn-outline" style="font-size: 0.7rem; padding: 0.2rem 0.5rem;" onclick="resetDescriptionTemplate()">
+                🔄 Restaurar Redes & Endereços
+              </button>
+            </div>
+            <textarea id="episode-description" rows="5" style="width: 100%; font-size: 0.78rem; font-family: inherit; line-height: 1.4; resize: vertical; border: 1px solid var(--input-border); border-radius: var(--radius); background: var(--input-bg); color: var(--text); padding: 0.55rem;"></textarea>
+            <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 0.25rem;">
+              Texto padrão pré-configurado com as redes sociais e campi do Núcleo da Fé. Totalmente editável.
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top: 0.5rem;">
             <label>Formato de Envio</label>
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem;">
               <label style="display: flex; align-items: center; gap: 0.4rem; padding: 0.5rem 0.6rem; border: 1px solid var(--input-border); border-radius: 6px; cursor: pointer; background: var(--input-bg); font-size: 0.82rem;">
@@ -863,12 +876,34 @@
                     <div id="manual-hud-msg" style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.3;">Iniciando download...</div>
                   </div>
 
-                  <button type="button" id="btn-download-cover" class="btn btn-outline" style="font-size: 0.8rem; padding: 0.5rem;" onclick="handleManualDownloadCover()">
-                    🖼️ Baixar Capa Quadrada (JPG)
+                  <!-- Imagens para Download -->
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem;">
+                    <button type="button" id="btn-download-thumb" class="btn btn-outline" style="font-size: 0.74rem; padding: 0.45rem;" onclick="handleDownloadYouTubeThumb()">
+                      🖼️ Thumb YouTube (16:9)
+                    </button>
+                    <button type="button" id="btn-download-cover" class="btn btn-outline" style="font-size: 0.74rem; padding: 0.45rem;" onclick="handleManualDownloadCover()">
+                      🖼️ Capa Quadrada (1:1)
+                    </button>
+                  </div>
+
+                  <button type="button" class="btn btn-outline" style="font-size: 0.76rem; padding: 0.42rem; border-color: rgba(59, 130, 246, 0.4); color: var(--primary); font-weight: 600;" onclick="handleDownloadCompletePackage()">
+                    📦 Baixar Pacote Completo (Vídeo + Imagens)
                   </button>
-                  <button type="button" class="btn btn-outline" style="font-size: 0.8rem; padding: 0.5rem;" onclick="copyEpisodeMetadata()">
-                    📋 Copiar Título & Texto
+
+                  <!-- Cópia Rápida para o Spotify -->
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem;">
+                    <button type="button" class="btn btn-outline" style="font-size: 0.74rem; padding: 0.45rem;" onclick="copyEpisodeTitleOnly()">
+                      📋 Copiar Título
+                    </button>
+                    <button type="button" class="btn btn-outline" style="font-size: 0.74rem; padding: 0.45rem;" onclick="copyEpisodeDescriptionOnly()">
+                      📋 Copiar Descrição
+                    </button>
+                  </div>
+
+                  <button type="button" class="btn btn-outline" style="font-size: 0.74rem; padding: 0.45rem;" onclick="copyEpisodeMetadata()">
+                    📋 Copiar Tudo (Título + Descrição)
                   </button>
+
                   <a href="https://podcasters.spotify.com/pod/dashboard/episode/wizard" target="_blank" rel="noopener" class="btn btn-spotify" style="font-size: 0.82rem; padding: 0.55rem; text-decoration: none;">
                     🚀 Abrir Spotify for Creators ↗
                   </a>
@@ -1316,6 +1351,11 @@
     const titleEl = document.getElementById('episode-title');
     if (title && titleEl) titleEl.value = title;
 
+    const descEl = document.getElementById('episode-description');
+    if (descEl) {
+      descEl.value = getChurchTemplate(id, title);
+    }
+
     if (ytPlayer && typeof ytPlayer.loadVideoById === 'function') {
       try {
         ytPlayer.loadVideoById(id);
@@ -1350,6 +1390,7 @@
         const data = await res.json();
         if (data.title && titleEl) {
           titleEl.value = data.title;
+          if (descEl) descEl.value = getChurchTemplate(id, data.title);
         }
       } catch (e) {
         console.error("Preview error", e);
@@ -1483,6 +1524,7 @@
   async function startPublish() {
     const videoInput = document.getElementById('video-input').value.trim();
     const title = document.getElementById('episode-title').value.trim();
+    const description = document.getElementById('episode-description')?.value.trim() || null;
     const start = document.getElementById('cut-start-input').value.trim();
     const end = document.getElementById('cut-end-input').value.trim();
     const gitPush = document.getElementById('git-push-check').checked;
@@ -1506,6 +1548,7 @@
         body: JSON.stringify({
           video_id: videoInput,
           title: title,
+          description: description,
           start: start || null,
           end: end || null,
           git_push: gitPush,
@@ -1784,19 +1827,118 @@
     }
   }
 
-  async function copyEpisodeMetadata() {
+  function getChurchTemplate(videoId, title) {
+    const vUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : "https://www.youtube.com/@nucleodafe";
+    const header = title ? `${title}\n\nMensagem gravada ao vivo na Igreja Núcleo da Fé.` : "Mensagem gravada ao vivo na Igreja Núcleo da Fé.";
+    return `${header}
+Vídeo oficial no YouTube: ${vUrl}
+
+Acompanhe nossas redes:
+Insta: @nucleodafe - https://www.instagram.com/nucleodafe/
+Site: https://www.nucleodafe.com.br/
+Face: https://www.facebook.com/nucleodafe.oficial/
+
+Endereços:
+Campus N.Bandeirante: SIBS Quadra 2, Área Especial 2, N.Bandeirante -DF
+Campus Noroeste: QSW 706/707, Bloco A, Setor Noroeste - DF,
+Campus Jardim Botânico: SHJB Qd. 03 Conj. F, Lt. 13, 13 - Jardim Botânico
+Campus Planaltina: Setor de Oficinas, Conj. D, Lote 01, 1 - Planaltina - DF
+Campus Samambaia: QND 412, Conj. D, Lote 02, Loja 02, 2 - Samambaia, DF
+Campus Gama: Setor Sul, Quadra 05, CL 5, 5 - Gama, Brasília - DF
+Campus Jardim Ingá: Quadra 601, Lote 3, Parque X, 0 - Jardim Ingá, Luziânia - GO
+
+Contato: (61) 3386-2122`;
+  }
+
+  function resetDescriptionTemplate() {
     const title = document.getElementById('episode-title')?.value.trim() || "";
     const vInput = document.getElementById('video-input')?.value.trim() || "";
     const vId = parseVideoId(vInput) || currentVideoId || "";
+    const descEl = document.getElementById('episode-description');
+    if (descEl) {
+      descEl.value = getChurchTemplate(vId, title);
+      showToast("🔄 Redes e endereços restaurados!");
+    }
+  }
 
-    const clipText = `${title}\n\nVídeo oficial: https://www.youtube.com/watch?v=${vId}\n\nPregação gravada ao vivo na Igreja Núcleo da Fé.`;
+  async function copyEpisodeTitleOnly() {
+    const title = document.getElementById('episode-title')?.value.trim() || "";
+    if (!title) {
+      showToast("⚠️ Título está vazio!", true);
+      return;
+    }
+    await navigator.clipboard.writeText(title);
+    showToast("📋 Título copiado!");
+  }
+
+  async function copyEpisodeDescriptionOnly() {
+    const desc = document.getElementById('episode-description')?.value.trim() || "";
+    if (!desc) {
+      showToast("⚠️ Descrição está vazia!", true);
+      return;
+    }
+    await navigator.clipboard.writeText(desc);
+    showToast("📋 Descrição com redes copiada!");
+  }
+
+  async function copyEpisodeMetadata() {
+    const title = document.getElementById('episode-title')?.value.trim() || "";
+    const desc = document.getElementById('episode-description')?.value.trim() || "";
+    const fullText = title ? `${title}\n\n${desc}` : desc;
 
     try {
-      await navigator.clipboard.writeText(clipText);
+      await navigator.clipboard.writeText(fullText);
       showToast("📋 Título e texto copiados com sucesso!");
     } catch (err) {
       showToast("Erro ao copiar para a área de transferência.", true);
     }
+  }
+
+  async function handleDownloadYouTubeThumb() {
+    const vInput = document.getElementById('video-input')?.value.trim();
+    const vId = parseVideoId(vInput) || currentVideoId;
+    if (!vId) {
+      alert("Por favor, selecione um vídeo primeiro!");
+      return;
+    }
+    const btn = document.getElementById('btn-download-thumb');
+    if (btn) btn.disabled = true;
+    showToast("🖼️ Baixando Thumbnail HD do YouTube...");
+    try {
+      const res = await fetch('/api/prepare-thumb', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_id: vId })
+      });
+      const data = await res.json();
+      if (data.download_url) {
+        window.location.href = data.download_url + '?download=1';
+        showToast("🖼️ Thumbnail do YouTube baixada com sucesso!");
+      } else {
+        alert("Erro ao baixar thumbnail: " + (data.error || "Não encontrada"));
+      }
+    } catch (e) {
+      alert("Erro na requisição: " + e.message);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function handleDownloadCompletePackage() {
+    const vInput = document.getElementById('video-input')?.value.trim();
+    const vId = parseVideoId(vInput) || currentVideoId;
+    if (!vId) {
+      alert("Por favor, selecione um vídeo primeiro!");
+      return;
+    }
+    showToast("📦 Baixando pacote completo (Vídeo + Imagens)...");
+    await handleDownloadYouTubeThumb();
+    setTimeout(() => {
+      handleManualDownloadCover();
+    }, 1200);
+    setTimeout(() => {
+      handleManualDownloadMp4();
+    }, 2400);
   }
 
   async function startSpotifyRobot(overrideVideoId) {
@@ -1808,6 +1950,7 @@
     }
 
     const title = document.getElementById('episode-title')?.value.trim();
+    const description = document.getElementById('episode-description')?.value.trim() || null;
     const statusBox = document.getElementById('spotify-robot-status-box');
     const badge = document.getElementById('spotify-robot-badge');
     const msg = document.getElementById('spotify-robot-msg');
@@ -1830,6 +1973,7 @@
         body: JSON.stringify({
           video_id: vId,
           title: title,
+          description: description,
           quality: quality,
           start: startCut,
           end: endCut
@@ -2073,6 +2217,10 @@
         const titleInput = document.getElementById('episode-title');
         if (titleInput && (!titleInput.value.trim() || confirm(`Deseja usar o título sugerido pela IA?\n\n"${data.title}"`))) {
           titleInput.value = data.title;
+          const descInput = document.getElementById('episode-description');
+          if (descInput) {
+            descInput.value = getChurchTemplate(vId, data.title);
+          }
         }
       }
 
@@ -2125,6 +2273,10 @@
   loadFeedEpisodes();
   loadChannelVideos();
   updateCoverPreview();
+  const descEl = document.getElementById('episode-description');
+  if (descEl && !descEl.value) {
+    descEl.value = getChurchTemplate(currentVideoId, document.getElementById('episode-title')?.value);
+  }
 </script>
 
 <div id="toast-msg" style="position: fixed; bottom: 2rem; right: 2rem; background: var(--success); color: #fff; padding: 0.75rem 1.25rem; border-radius: 8px; font-weight: 600; font-size: 0.9rem; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 99999; display: none; transition: opacity 0.3s ease;">

@@ -247,6 +247,7 @@ def publish_worker(
     media_format: str = "audio",  # "audio", "video", "both"
     custom_cover_b64: str | None = None,
     quality: str = "720",
+    description_override: str | None = None,
 ) -> None:
     try:
         set_task("running", f"Iniciando publicação ({media_format}) do vídeo {video_id}...", 5, "Buscando detalhes do vídeo no YouTube...")
@@ -275,6 +276,8 @@ def publish_worker(
             spec = {"video_id": video_id}
             if title_override and title_override.strip():
                 spec["title"] = title_override.strip()
+            if description_override and description_override.strip():
+                spec["description"] = description_override.strip()
 
             published_info: list[str] = []
             out_v_url = None
@@ -580,6 +583,25 @@ def manual_export_worker(
     except Exception as exc:
         LOG.exception("Erro ao gerar vídeo manual: %s", exc)
         set_manual_export("error", f"Falha ao gerar vídeo: {exc}", 0, stage="error", error=str(exc), video_id=video_id)
+
+
+def download_youtube_thumbnail(video_id: str, dest_path: Path) -> Path:
+    urls = [
+        f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg",
+        f"https://img.youtube.com/vi/{video_id}/sddefault.jpg",
+        f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg",
+    ]
+    for url in urls:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = resp.read()
+                if len(data) > 1000:
+                    dest_path.write_bytes(data)
+                    return dest_path
+        except Exception:
+            continue
+    raise RuntimeError(f"Não foi possível baixar a thumbnail do YouTube para {video_id}")
 
 
 class StudioHandler(BaseHTTPRequestHandler):
@@ -933,6 +955,29 @@ class StudioHandler(BaseHTTPRequestHandler):
             self.send_json({"status": "ready", "download_url": f"/exports/{video_id}.jpg"})
             return
 
+        if path == "/api/prepare-thumb":
+            raw_id = body.get("video_id", "")
+            try:
+                video_id = parse_video_id(raw_id)
+            except ValueError as exc:
+                self.send_json({"error": str(exc)}, status=400)
+                return
+            exports_dir = Path("exports").resolve()
+            exports_dir.mkdir(exist_ok=True)
+            thumb_file = exports_dir / f"{video_id}_thumb.jpg"
+            if not thumb_file.exists():
+                try:
+                    download_youtube_thumbnail(video_id, thumb_file)
+                except Exception as exc:
+                    self.send_json({"error": str(exc)}, status=500)
+                    return
+            self.send_json({
+                "status": "ready",
+                "download_url": f"/exports/{video_id}_thumb.jpg",
+                "filename": f"{video_id}_thumb.jpg",
+            })
+            return
+
         if path == "/api/spotify-start-upload":
             raw_id = body.get("video_id", "")
             try:
@@ -979,6 +1024,7 @@ class StudioHandler(BaseHTTPRequestHandler):
             start_str = body.get("start")
             end_str = body.get("end")
             title_override = body.get("title")
+            description_override = body.get("description")
             git_push = body.get("git_push", True)
             media_format = body.get("media_format", "audio")  # "audio", "video", "both"
             custom_cover_b64 = body.get("custom_cover")
@@ -986,7 +1032,7 @@ class StudioHandler(BaseHTTPRequestHandler):
 
             thread = threading.Thread(
                 target=publish_worker,
-                args=(video_id, start_str, end_str, title_override, git_push, media_format, custom_cover_b64, quality),
+                args=(video_id, start_str, end_str, title_override, git_push, media_format, custom_cover_b64, quality, description_override),
                 daemon=True,
             )
             thread.start()
