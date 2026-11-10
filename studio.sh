@@ -37,6 +37,21 @@ fi
 PORT="${PORT:-8000}"
 URL="http://localhost:$PORT"
 
+# Se um Studio antigo ainda estiver rodando nesta porta, encerra para carregar o código atualizado
+OLD_PIDS="$(lsof -ti tcp:"$PORT" -sTCP:LISTEN 2>/dev/null || true)"
+if [ -n "$OLD_PIDS" ]; then
+    for pid in $OLD_PIDS; do
+        if ps -o command= -p "$pid" | grep -q "server.py"; then
+            echo "♻️  Encerrando Studio antigo em execução (PID $pid) para carregar a versão atual..."
+            kill "$pid" 2>/dev/null || true
+        else
+            echo "❌ A porta $PORT está em uso por outro programa (PID $pid). Use: PORT=8001 ./studio.sh"
+            exit 1
+        fi
+    done
+    sleep 1
+fi
+
 echo ""
 echo "🚀 Iniciando o Podcast Studio em: $URL"
 echo "   Pressione Ctrl+C para encerrar o servidor a qualquer momento."

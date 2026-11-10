@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
 import json
 import logging
@@ -18,7 +19,7 @@ import time
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -29,13 +30,14 @@ from processar_podcast import (
     download_video,
     encode_mp3,
     encode_mp4,
-    existing_guids,
     generate_episode_artwork,
     https_url,
+    is_compatible_mp4,
     load_env_file,
     load_feed,
     r2_client,
     required_env,
+    run,
     save_feed,
     seconds,
     update_channel,
@@ -83,6 +85,7 @@ MANUAL_EXPORT_TASK: dict[str, Any] = {
     "download_url": None,
     "filename": None,
     "error": None,
+    "kind": "mp4",  # mp4 | mp3
 }
 MANUAL_EXPORT_LOCK = threading.Lock()
 
@@ -205,15 +208,17 @@ def fetch_channel_videos(limit: int = 10) -> list[dict[str, Any]]:
     data = json.loads(res.stdout)
     entries = data.get("entries") or [data]
 
-    # Get published GUIDs
-    feed_path = Path("podcast.xml")
-    published_guids = set()
-    if feed_path.exists():
-        try:
-            _, ch = load_feed(feed_path)
-            published_guids = existing_guids(ch)
-        except Exception:
-            pass
+    # GUIDs publicados em cada feed (áudio e vídeo)
+    published_by_feed: dict[str, set[str]] = {"audio": set(), "video": set()}
+    for f_name, f_type in (("podcast.xml", "audio"), ("vodcast.xml", "video")):
+        feed_path = Path(f_name)
+        if feed_path.exists():
+            try:
+                _, ch = load_feed(feed_path)
+                published_by_feed[f_type] = feed_video_ids(ch)
+            except Exception:
+                pass
+    published_guids = published_by_feed["audio"] | published_by_feed["video"]
 
     results: list[dict[str, Any]] = []
     for entry in entries:
@@ -237,6 +242,7 @@ def fetch_channel_videos(limit: int = 10) -> list[dict[str, Any]]:
             "is_short": (0 < dur_sec <= 4500),  # <= 75 min (pregação já cortada)
             "thumbnail": f"https://img.youtube.com/vi/{v_id}/mqdefault.jpg",
             "published": v_id in published_guids,
+            "published_formats": [f for f in ("audio", "video") if v_id in published_by_feed[f]],
             "is_live": dur_sec == 0,
         })
     return results
@@ -286,6 +292,387 @@ def get_download_filename(file_name: str, title: str | None = None) -> str:
         return f"{base} - Audio.mp3"
     ext = Path(file_name).suffix
     return f"{base}{ext}"
+
+
+# ---------------------------------------------------------------------------
+# Helpers compartilhados entre Publicar, Download Manual e Robô do Spotify.
+# Garantem que os três fluxos reutilizem o mesmo stream bruto (cache), o mesmo
+# MP4 recortado (com meta.json) e a mesma capa (automática ou personalizada).
+# ---------------------------------------------------------------------------
+
+YT_ID_RE = re.compile(r"(?:v=|youtu\.be/|/live/|/embed/|^yt:)([A-Za-z0-9_-]{11})")
+
+
+def item_video_id(item: Any) -> str | None:
+    """Extrai o ID do YouTube de um <item> do feed (guid 'yt:ID' ou link do YouTube)."""
+    for text in (item.findtext("guid", default=""), item.findtext("link", default=""),
+                 item.findtext("description", default="")):
+        m = YT_ID_RE.search(text or "")
+        if m:
+            return m.group(1)
+    return None
+
+
+def feed_video_ids(channel: Any) -> set[str]:
+    return {vid for vid in (item_video_id(it) for it in channel.findall("item")) if vid}
+
+
+def remove_existing_episode(channel: Any, video_id: str) -> int:
+    """Remove itens do mesmo vídeo para que republicar substitua em vez de duplicar."""
+    removed = 0
+    for it in list(channel.findall("item")):
+        if item_video_id(it) == video_id:
+            channel.remove(it)
+            removed += 1
+    return removed
+
+
+EXPORT_LOCKS: dict[str, threading.Lock] = {}
+EXPORT_LOCKS_GUARD = threading.Lock()
+
+
+def get_exports_dir() -> Path:
+    d = Path("exports").resolve()
+    d.mkdir(exist_ok=True)
+    return d
+
+
+def _video_lock(video_id: str) -> threading.Lock:
+    with EXPORT_LOCKS_GUARD:
+        return EXPORT_LOCKS.setdefault(video_id, threading.Lock())
+
+
+def link_friendly_copy(src: Path, title: str | None) -> None:
+    """Cria hardlink/cópia com o nome amigável baseado no título na pasta exports/."""
+    if not title or not str(title).strip() or not src.exists():
+        return
+    dst = src.parent / get_download_filename(src.name, str(title).strip())
+    if dst == src:
+        return
+    try:
+        if dst.exists():
+            dst.unlink()
+        try:
+            os.link(str(src), str(dst))
+        except Exception:
+            shutil.copy2(str(src), str(dst))
+    except Exception as e:
+        LOG.warning("Não foi possível criar cópia amigável %s: %s", dst.name, e)
+
+
+def decode_cover_b64(custom_cover_b64: str | None) -> bytes | None:
+    if not custom_cover_b64:
+        return None
+    try:
+        c_data = custom_cover_b64.split(",", 1)[1] if "," in custom_cover_b64 else custom_cover_b64
+        return base64.b64decode(c_data)
+    except Exception as e:
+        LOG.warning("Erro ao decodificar capa personalizada: %s", e)
+        return None
+
+
+def ensure_artwork(video_id: str, custom_cover_b64: str | None = None, title: str | None = None) -> Path:
+    """Gera (ou reutiliza) a capa 1:1 em exports/{id}.jpg respeitando a capa personalizada."""
+    exports_dir = get_exports_dir()
+    art_path = exports_dir / f"{video_id}.jpg"
+    marker = exports_dir / f"{video_id}.cover.json"
+    custom_bytes = decode_cover_b64(custom_cover_b64)
+    wanted = {"source": "custom", "digest": hashlib.sha1(custom_bytes).hexdigest()} if custom_bytes else {"source": "auto"}
+
+    current: dict[str, Any] = {"source": "auto"}
+    if marker.is_file():
+        try:
+            current = json.loads(marker.read_text(encoding="utf-8"))
+        except Exception:
+            current = {}
+
+    if not art_path.is_file() or current != wanted:
+        generate_episode_artwork(video_id, art_path, custom_image_bytes=custom_bytes)
+        marker.write_text(json.dumps(wanted), encoding="utf-8")
+    link_friendly_copy(art_path, title)
+    return art_path
+
+
+def probe_duration(path: Path) -> int:
+    probe = json.loads(run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", str(path)]))
+    return round(float(probe["format"]["duration"]))
+
+
+def export_matches(video_id: str, start_sec: int | None, end_sec: int | None, quality: str) -> dict[str, Any] | None:
+    """Retorna o meta.json salvo se o MP4 exportado corresponde exatamente ao corte/qualidade pedidos."""
+    exports_dir = get_exports_dir()
+    mp4 = exports_dir / f"{video_id}.mp4"
+    meta_file = exports_dir / f"{video_id}.meta.json"
+    if not mp4.is_file() or mp4.stat().st_size == 0:
+        return None
+    # MP4 antigos podem ter vídeo AV1 copiado (não abre no QuickTime/Spotify): força regenerar
+    if not is_compatible_mp4(mp4):
+        return None
+    if meta_file.is_file():
+        try:
+            meta = json.loads(meta_file.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+        if (meta.get("start_sec") == start_sec and meta.get("end_sec") == end_sec
+                and str(meta.get("quality", "720")) == str(quality)):
+            return meta
+        return None
+    # Arquivos antigos sem meta: só valem para vídeo completo
+    if start_sec is None and end_sec is None:
+        return {"video_id": video_id, "start_sec": None, "end_sec": None, "quality": quality, "title": ""}
+    return None
+
+
+def _cover_state(video_id: str) -> dict[str, Any]:
+    marker = get_exports_dir() / f"{video_id}.cover.json"
+    try:
+        return json.loads(marker.read_text(encoding="utf-8")) if marker.is_file() else {"source": "auto"}
+    except Exception:
+        return {"source": "auto"}
+
+
+def write_mp3_meta(video_id: str, start_sec: int | None, end_sec: int | None, title: str | None,
+                   size: int, duration: int) -> None:
+    (get_exports_dir() / f"{video_id}.mp3.json").write_text(json.dumps({
+        "video_id": video_id,
+        "title": (title or "").strip(),
+        "start_sec": start_sec,
+        "end_sec": end_sec,
+        "cover": _cover_state(video_id),
+        "size": size,
+        "duration": duration,
+        "updated_at": time.time(),
+    }, indent=2), encoding="utf-8")
+
+
+def mp3_export_matches(video_id: str, start_sec: int | None, end_sec: int | None) -> dict[str, Any] | None:
+    """Meta do MP3 exportado se ele corresponde ao corte e à capa atuais."""
+    exports_dir = get_exports_dir()
+    mp3 = exports_dir / f"{video_id}.mp3"
+    meta_file = exports_dir / f"{video_id}.mp3.json"
+    if not mp3.is_file() or mp3.stat().st_size == 0 or not meta_file.is_file():
+        return None
+    try:
+        meta = json.loads(meta_file.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if meta.get("start_sec") == start_sec and meta.get("end_sec") == end_sec and meta.get("cover") == _cover_state(video_id):
+        return meta
+    return None
+
+
+def ensure_export_mp3(
+    video_id: str,
+    start_str: str | None,
+    end_str: str | None,
+    title: str | None = None,
+    custom_cover_b64: str | None = None,
+    *,
+    force: bool = False,
+    on_dl: Any = None,
+    on_enc: Any = None,
+    report: Any = None,
+    cancel: Any = None,
+    register: Any = None,
+) -> dict[str, Any]:
+    """Garante exports/{id}.mp3 (-16 LUFS, capa embutida) com o corte pedido.
+
+    Fonte, da mais rápida para a mais lenta: MP4 já exportado com o mesmo corte →
+    stream de vídeo em cache → áudio em cache → download só do áudio no YouTube.
+    """
+    def say(stage: str, msg: str, pct: int) -> None:
+        if report:
+            report(stage, msg, pct)
+
+    lock = _video_lock(video_id)
+    if not lock.acquire(blocking=False):
+        say("downloading", "Aguardando outra exportação deste mesmo vídeo terminar...", 5)
+        lock.acquire()
+    try:
+        exports_dir = get_exports_dir()
+        cache_dir = exports_dir / ".cache"
+        cache_dir.mkdir(exist_ok=True)
+        mp3_path = exports_dir / f"{video_id}.mp3"
+        start_sec, end_sec = normalize_cut_bounds(start_str, end_str)
+
+        say("artwork", "Preparando capa para embutir no MP3...", 8)
+        art_path = ensure_artwork(video_id, custom_cover_b64, title)
+
+        if not force:
+            meta = mp3_export_matches(video_id, start_sec, end_sec)
+            if meta:
+                say("complete", "MP3 com este corte já existe — reutilizando.", 100)
+                link_friendly_copy(mp3_path, title)
+                return {"mp3": mp3_path, "size": mp3_path.stat().st_size, "duration": meta.get("duration") or 0, "reused": True}
+
+        source: Path | None = None
+        src_start, src_end = start_sec, end_sec
+        mp4_meta = None
+        for q in ("720", "1080", "480", "360"):
+            mp4_meta = export_matches(video_id, start_sec, end_sec, q)
+            if mp4_meta:
+                break
+        if mp4_meta:
+            source, src_start, src_end = exports_dir / f"{video_id}.mp4", None, None  # já recortado
+            say("encoding", "Extraindo áudio do MP4 já recortado (sem baixar)...", 15)
+        else:
+            raw_videos = sorted(cache_dir.glob(f"raw_{video_id}_*.mp4"), key=lambda pth: pth.stat().st_size)
+            raw_audio = sorted(cache_dir.glob(f"raw_audio_{video_id}.*"))
+            if raw_videos:
+                source = raw_videos[0]
+                say("encoding", "Extraindo áudio do stream em cache (sem baixar)...", 15)
+            elif raw_audio and raw_audio[0].stat().st_size > 10_000:
+                source = raw_audio[0]
+                say("encoding", "Reutilizando áudio já baixado do cache...", 15)
+            else:
+                say("downloading", "Baixando somente o áudio do YouTube...", 10)
+                with tempfile.TemporaryDirectory(prefix="dl-audio-") as dl_tmp:
+                    a_file = download_audio(
+                        video_id, Path(dl_tmp),
+                        progress_callback=on_dl, cancellation_check=cancel, register_proc=register,
+                    )
+                    source = cache_dir / f"raw_audio_{video_id}{a_file.suffix}"
+                    shutil.move(str(a_file), str(source))
+
+        say("encoding", "Normalizando áudio (-16 LUFS) e gerando MP3...", 55)
+        tmp_out = exports_dir / f"{video_id}.tmp.mp3"  # só substitui o MP3 final quando terminar
+        try:
+            size, duration = encode_mp3(
+                source, tmp_out, src_start, src_end, artwork_path=art_path,
+                progress_callback=on_enc, cancellation_check=cancel, register_proc=register,
+            )
+            os.replace(tmp_out, mp3_path)
+        finally:
+            if tmp_out.exists():
+                try:
+                    tmp_out.unlink()
+                except Exception:
+                    pass
+
+        write_mp3_meta(video_id, start_sec, end_sec, title, size, duration)
+        link_friendly_copy(mp3_path, title)
+        return {"mp3": mp3_path, "size": size, "duration": duration, "reused": False}
+    finally:
+        lock.release()
+
+
+def ensure_export_mp4(
+    video_id: str,
+    start_str: str | None,
+    end_str: str | None,
+    quality: str = "720",
+    title: str | None = None,
+    *,
+    force: bool = False,
+    on_dl: Any = None,
+    on_enc: Any = None,
+    report: Any = None,
+    cancel: Any = None,
+    register: Any = None,
+) -> dict[str, Any]:
+    """Garante exports/{id}.mp4 com o corte e qualidade pedidos.
+
+    Reutiliza o MP4 já exportado quando o corte coincide e o stream bruto em
+    exports/.cache quando já foi baixado. Grava meta.json e cópia com nome amigável.
+    """
+    def say(stage: str, msg: str, pct: int) -> None:
+        if report:
+            report(stage, msg, pct)
+
+    lock = _video_lock(video_id)
+    if not lock.acquire(blocking=False):
+        say("downloading", "Aguardando outra exportação deste mesmo vídeo terminar...", 5)
+        lock.acquire()
+    try:
+        exports_dir = get_exports_dir()
+        cache_dir = exports_dir / ".cache"
+        cache_dir.mkdir(exist_ok=True)
+        mp4_path = exports_dir / f"{video_id}.mp4"
+        meta_path = exports_dir / f"{video_id}.meta.json"
+        start_sec, end_sec = normalize_cut_bounds(start_str, end_str)
+        is_cut = start_sec is not None and end_sec is not None
+
+        if not force:
+            meta = export_matches(video_id, start_sec, end_sec, quality)
+            if meta:
+                say("complete", "MP4 com este corte já existe — reutilizando sem baixar novamente.", 100)
+                if title and title.strip() and meta.get("title") != title.strip() and meta_path.is_file():
+                    meta["title"] = title.strip()
+                    meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+                link_friendly_copy(mp4_path, title)
+                duration = meta.get("duration") or probe_duration(mp4_path)
+                return {"mp4": mp4_path, "size": mp4_path.stat().st_size, "duration": duration, "reused": True, "is_cut": is_cut}
+
+        raw_source = cache_dir / f"raw_{video_id}_{quality}.mp4"
+        avc_tried = cache_dir / f"raw_{video_id}_{quality}.avc-tried"
+        # Stream em cache que não é H.264 (ex.: AV1 de downloads antigos): baixa de novo uma vez
+        # preferindo H.264, o que evita uma reconversão lenta. Se o YouTube não tiver H.264, reconverte.
+        if raw_source.is_file() and not avc_tried.exists() and not is_compatible_mp4(raw_source):
+            say("downloading", "Stream em cache está em AV1/VP9; baixando versão H.264 compatível...", 8)
+            try:
+                raw_source.unlink()
+            except Exception:
+                pass
+        if raw_source.is_file() and raw_source.stat().st_size > 100_000:
+            say("encoding" if is_cut else "packaging", f"Reutilizando stream já baixado do cache ({quality}p)...", 50)
+        else:
+            say("downloading", f"Baixando vídeo do YouTube ({quality}p)...", 10)
+            with tempfile.TemporaryDirectory(prefix="dl-raw-") as dl_tmp:
+                dl_file = download_video(
+                    video_id,
+                    Path(dl_tmp),
+                    quality=quality,
+                    progress_callback=on_dl,
+                    cancellation_check=cancel,
+                    register_proc=register,
+                )
+                shutil.move(str(dl_file), str(raw_source))
+            avc_tried.write_text("1", encoding="utf-8")
+
+        for old in (mp4_path, meta_path):
+            if old.exists():
+                try:
+                    old.unlink()
+                except Exception:
+                    pass
+
+        say("encoding" if is_cut else "packaging",
+            "Recortando e otimizando MP4 com FFmpeg..." if is_cut else "Otimizando vídeo completo (+faststart)...", 55)
+        try:
+            size, duration = encode_mp4(
+                raw_source,
+                mp4_path,
+                start_sec,
+                end_sec,
+                progress_callback=on_enc,
+                cancellation_check=cancel,
+                register_proc=register,
+            )
+        except BaseException:
+            if mp4_path.exists():
+                try:
+                    mp4_path.unlink()
+                except Exception:
+                    pass
+            raise
+
+        meta_path.write_text(json.dumps({
+            "video_id": video_id,
+            "title": (title or "").strip(),
+            "start_str": start_str,
+            "end_str": end_str,
+            "start_sec": start_sec,
+            "end_sec": end_sec,
+            "quality": quality,
+            "is_cut": is_cut,
+            "size": size,
+            "duration": duration,
+            "updated_at": time.time(),
+        }, indent=2), encoding="utf-8")
+        link_friendly_copy(mp4_path, title)
+        return {"mp4": mp4_path, "size": size, "duration": duration, "reused": False, "is_cut": is_cut}
+    finally:
+        lock.release()
 
 
 MANUAL_EXPORT_CANCEL_EVENT = threading.Event()
@@ -351,7 +738,7 @@ def publish_worker(
         return PUBLISH_CANCEL_EVENT.is_set()
 
     try:
-        set_task("running", f"Iniciando publicação ({media_format}) do vídeo {video_id}...", 5, "Buscando detalhes do vídeo no YouTube...")
+        set_task("running", f"Iniciando publicação ({media_format}) do vídeo {video_id}...", 5, "Buscando detalhes do vídeo no YouTube...", speed="--", eta="--", stage="preparing")
         details = video_details(video_id)
         video_title = title_override.strip() if title_override and title_override.strip() else details.get("title", video_id)
         set_task("running", f"Vídeo identificado: {video_title}", 15, f"Título: {video_title} (Duração original: {int(details.get('duration', 0)) // 60} min)")
@@ -383,20 +770,9 @@ def publish_worker(
             out_v_url = None
             out_a_url = None
 
-            # 1. Generate square episode artwork (2048x2048)
-            set_task("running", "Gerando capa quadrada do episódio (2048x2048)...", 20, "Processando arte oficial do episódio para Spotify e Apple Podcasts...")
-            custom_bytes = None
-            if custom_cover_b64:
-                try:
-                    c_data = custom_cover_b64
-                    if "," in c_data:
-                        c_data = c_data.split(",", 1)[1]
-                    custom_bytes = base64.b64decode(c_data)
-                except Exception as e:
-                    LOG.warning("Erro ao decodificar capa personalizada: %s", e)
-
-            art_file = directory / f"{video_id}.jpg"
-            generate_episode_artwork(video_id, art_file, custom_image_bytes=custom_bytes)
+            # 1. Capa quadrada (2048x2048) — mesma usada no download manual e no robô do Spotify
+            set_task("running", "Gerando capa quadrada do episódio (2048x2048)...", 20, "Processando arte oficial do episódio para Spotify e Apple Podcasts...", stage="artwork")
+            art_file = ensure_artwork(video_id, custom_cover_b64, video_title)
 
             art_key = f"episodes/{video_id}.jpg"
             client.upload_file(str(art_file), bucket, art_key, ExtraArgs={"ContentType": "image/jpeg"})
@@ -404,37 +780,34 @@ def publish_worker(
             published_info.append(f"Capa: {ep_image_url}")
 
             if media_format in ("video", "both"):
-                set_task("running", f"Baixando vídeo ({quality}p) do YouTube...", 25, f"Baixando stream de vídeo ({quality}p) de {video_id}...", stage="downloading")
                 def on_dl(pct: float, spd: str, eta: str):
                     mapped = int(25 + (pct * 0.25))
                     set_task("running", f"Baixando vídeo ({quality}p)... {pct:.1f}%", mapped, speed=spd, eta=eta, stage="downloading")
 
-                video_src = download_video(
-                    video_id,
-                    directory,
-                    quality=quality,
-                    progress_callback=on_dl,
-                    cancellation_check=is_pub_cancelled,
-                    register_proc=reg_pub_proc,
-                )
-
-                set_task("running", "Processando vídeo MP4 com FFmpeg...", 50, "Cortando e otimizando vídeo MP4 (+faststart)...", stage="encoding")
                 def on_enc(pct: float, spd: str, eta: str):
                     mapped = int(50 + (pct * 0.20))
                     set_task("running", f"Codificando MP4... {pct:.1f}%", mapped, speed=spd, eta=eta, stage="encoding")
 
-                mp4 = directory / f"{video_id}.mp4"
-                v_size, v_dur = encode_mp4(
-                    video_src,
-                    mp4,
-                    start_sec,
-                    end_sec,
-                    progress_callback=on_enc,
-                    cancellation_check=is_pub_cancelled,
-                    register_proc=reg_pub_proc,
-                )
+                def on_report(stage: str, msg: str, pct: int):
+                    mapped = 25 if stage == "downloading" else (70 if stage == "complete" else 50)
+                    set_task("running", msg, mapped, msg, stage=stage if stage != "complete" else "encoding")
 
-                set_task("running", f"Enviando vídeo ({v_size // 1024 // 1024} MB) para o Cloudflare R2...", 70, "Upload do vídeo MP4 para o Cloudflare R2...")
+                export = ensure_export_mp4(
+                    video_id,
+                    start_str,
+                    end_str,
+                    quality,
+                    video_title,
+                    on_dl=on_dl,
+                    on_enc=on_enc,
+                    report=on_report,
+                    cancel=is_pub_cancelled,
+                    register=reg_pub_proc,
+                )
+                mp4 = export["mp4"]
+                v_size, v_dur = export["size"], export["duration"]
+
+                set_task("running", f"Enviando vídeo ({v_size // 1024 // 1024} MB) para o Cloudflare R2...", 70, "Upload do vídeo MP4 para o Cloudflare R2...", stage="upload_r2")
                 v_key = f"episodes/{video_id}.mp4"
                 client.upload_file(str(mp4), bucket, v_key, ExtraArgs={"ContentType": "video/mp4"})
                 v_url = f"{public_domain}/{v_key}"
@@ -445,23 +818,27 @@ def publish_worker(
                 v_root, v_channel = load_feed(vodcast_path)
                 v_feed_url = feed_url_base.replace("podcast.xml", "vodcast.xml")
                 update_channel(v_channel, v_feed_url, image_url, email, title_suffix=" (Vídeo)")
+                remove_existing_episode(v_channel, video_id)
                 add_episode(v_channel, details, spec, v_url, v_size, v_dur, media_type="video/mp4", image_url=ep_image_url)
                 save_feed(v_root, vodcast_path)
 
                 if media_format == "both":
-                    set_task("running", "Normalizando áudio para -16 LUFS...", 80, "Extraindo áudio do vídeo para MP3 com capa embutida...")
+                    set_task("running", "Normalizando áudio para -16 LUFS...", 80, "Extraindo áudio do vídeo para MP3 com capa embutida...", stage="encoding")
                     mp3 = directory / f"{video_id}.mp3"
-                    a_size, a_dur = encode_mp3(video_src, mp3, start_sec, end_sec, artwork_path=art_file)
+                    # O MP4 exportado já está recortado: extrai o áudio dele sem novo corte
+                    a_size, a_dur = encode_mp3(mp4, mp3, None, None, artwork_path=art_file)
 
-                    set_task("running", f"Enviando áudio ({a_size // 1024 // 1024} MB) para o R2...", 90, "Upload do áudio MP3 para o Cloudflare R2...")
+                    set_task("running", f"Enviando áudio ({a_size // 1024 // 1024} MB) para o R2...", 90, "Upload do áudio MP3 para o Cloudflare R2...", stage="upload_r2")
                     a_key = f"episodes/{video_id}.mp3"
                     client.upload_file(str(mp3), bucket, a_key, ExtraArgs={"ContentType": "audio/mpeg"})
                     a_url = f"{public_domain}/{a_key}"
+                    out_a_url = a_url
                     published_info.append(f"Áudio MP3: {a_url}")
 
                     feed_path = Path("podcast.xml")
                     root, channel = load_feed(feed_path)
                     update_channel(channel, feed_url_base, image_url, email)
+                    remove_existing_episode(channel, video_id)
                     add_episode(channel, details, spec, a_url, a_size, a_dur, media_type="audio/mpeg", image_url=ep_image_url)
                     save_feed(root, feed_path)
 
@@ -478,15 +855,17 @@ def publish_worker(
                 mp3 = directory / f"{video_id}.mp3"
                 size, duration = encode_mp3(audio_src, mp3, start_sec, end_sec, artwork_path=art_file)
 
-                set_task("running", f"Áudio gerado ({size // 1024 // 1024} MB, {duration // 60} min). Enviando ao R2...", 75, "Fazendo upload para o Cloudflare R2...")
+                set_task("running", f"Áudio gerado ({size // 1024 // 1024} MB, {duration // 60} min). Enviando ao R2...", 75, "Fazendo upload para o Cloudflare R2...", stage="upload_r2")
                 key = f"episodes/{video_id}.mp3"
                 client.upload_file(str(mp3), bucket, key, ExtraArgs={"ContentType": "audio/mpeg"})
                 audio_url = f"{public_domain}/{key}"
+                out_a_url = audio_url
                 published_info.append(f"Áudio MP3: {audio_url}")
 
                 feed_path = Path("podcast.xml")
                 root, channel = load_feed(feed_path)
                 update_channel(channel, feed_url_base, image_url, email)
+                remove_existing_episode(channel, video_id)
                 add_episode(channel, details, spec, audio_url, size, duration, media_type="audio/mpeg", image_url=ep_image_url)
                 save_feed(root, feed_path)
 
@@ -501,48 +880,26 @@ def publish_worker(
                 except Exception:
                     pass
 
-            # Persist local copies in exports/ for download and Spotify automation
-            exports_dir = Path("exports").resolve()
-            exports_dir.mkdir(exist_ok=True)
-            local_art_path = None
-            local_mp4_path = None
+            # Capa e MP4 já estão em exports/ (ensure_artwork / ensure_export_mp4).
+            # Aqui só persistimos o MP3 para download local.
+            exports_dir = get_exports_dir()
+            local_art_path = f"/exports/{video_id}.jpg" if art_file.exists() else None
+            local_mp4_path = f"/exports/{video_id}.mp4" if (exports_dir / f"{video_id}.mp4").exists() and media_format in ("video", "both") else None
             local_mp3_path = None
-
-            if art_file.exists():
-                local_art = exports_dir / f"{video_id}.jpg"
-                shutil.copy2(str(art_file), str(local_art))
-                local_art_path = f"/exports/{video_id}.jpg"
-                if video_title:
-                    friendly_art = exports_dir / get_download_filename(f"{video_id}.jpg", video_title)
-                    try:
-                        shutil.copy2(str(art_file), str(friendly_art))
-                    except Exception:
-                        pass
-
-            if (directory / f"{video_id}.mp4").exists():
-                local_mp4 = exports_dir / f"{video_id}.mp4"
-                shutil.copy2(str(directory / f"{video_id}.mp4"), str(local_mp4))
-                local_mp4_path = f"/exports/{video_id}.mp4"
-                if video_title:
-                    friendly_mp4 = exports_dir / get_download_filename(f"{video_id}.mp4", video_title)
-                    try:
-                        shutil.copy2(str(local_mp4), str(friendly_mp4))
-                    except Exception:
-                        pass
 
             if (directory / f"{video_id}.mp3").exists():
                 local_mp3 = exports_dir / f"{video_id}.mp3"
                 shutil.copy2(str(directory / f"{video_id}.mp3"), str(local_mp3))
                 local_mp3_path = f"/exports/{video_id}.mp3"
-                if video_title:
-                    friendly_mp3 = exports_dir / get_download_filename(f"{video_id}.mp3", video_title)
-                    try:
-                        shutil.copy2(str(local_mp3), str(friendly_mp3))
-                    except Exception:
-                        pass
+                link_friendly_copy(local_mp3, video_title)
+                try:
+                    write_mp3_meta(video_id, start_sec, end_sec, video_title,
+                                   local_mp3.stat().st_size, probe_duration(local_mp3))
+                except Exception as exc:
+                    LOG.warning("Não foi possível gravar meta do MP3: %s", exc)
 
             if git_push:
-                set_task("running", "Enviando alterações para o GitHub Pages...", 95, "Executando git commit e push...")
+                set_task("running", "Enviando alterações para o GitHub Pages...", 95, "Executando git commit e push...", stage="git_push")
                 files_to_commit = ["podcast.xml", "video_state.json"]
                 if Path("vodcast.xml").exists():
                     files_to_commit.append("vodcast.xml")
@@ -560,11 +917,12 @@ def publish_worker(
             f"Episódio '{video_title}' publicado com sucesso!",
             100,
             f"Publicação finalizada com sucesso! {summary}",
+            stage="complete",
             video_url=out_v_url,
             audio_url=out_a_url,
             video_id=video_id,
             title=video_title,
-            description=details.get("description", ""),
+            description=(description_override or "").strip() or details.get("description", ""),
             local_mp4=local_mp4_path,
             local_art=local_art_path,
             local_mp3=local_mp3_path,
@@ -577,7 +935,7 @@ def publish_worker(
             set_task("idle", "Publicação cancelada pelo usuário.", 0, "Publicação cancelada pelo usuário.")
             return
         LOG.exception("Erro ao publicar episódio: %s", exc)
-        set_task("error", f"Falha na publicação: {exc}", 0, f"ERRO: {exc}", error=str(exc))
+        set_task("error", f"Falha na publicação: {exc}", 0, f"ERRO: {exc}", stage="error", error=str(exc))
 
 
 def spotify_upload_worker(
@@ -587,45 +945,11 @@ def spotify_upload_worker(
     quality: str = "720",
     start_str: str | None = None,
     end_str: str | None = None,
+    custom_cover_b64: str | None = None,
 ) -> None:
+    from spotify_uploader import set_spotify_state
+
     try:
-        from spotify_uploader import set_spotify_state, run_spotify_upload
-        exports_dir = Path("exports").resolve()
-        exports_dir.mkdir(exist_ok=True)
-        mp4_path = exports_dir / f"{video_id}.mp4"
-        art_path = exports_dir / f"{video_id}.jpg"
-
-        start_sec, end_sec = normalize_cut_bounds(start_str, end_str)
-
-        if not art_path.exists():
-            set_spotify_state("preparing", "Gerando arte quadrada do episódio...", stage="artwork")
-            generate_episode_artwork(video_id, art_path)
-
-        if not mp4_path.exists():
-            set_spotify_state("preparing", f"Baixando vídeo {video_id} ({quality}p)...", stage="downloading")
-            def on_sp_dl(pct: float, spd: str, eta: str):
-                set_spotify_state(
-                    "preparing",
-                    f"Baixando vídeo ({quality}p)... {pct:.1f}%",
-                    progress=int(pct),
-                    speed=spd,
-                    eta=eta,
-                    stage="downloading",
-                )
-            def on_sp_enc(pct: float, spd: str, eta: str):
-                set_spotify_state(
-                    "preparing",
-                    f"Recortando e otimizando vídeo MP4 (+faststart)... {pct:.1f}%",
-                    progress=int(pct),
-                    speed=spd,
-                    eta=eta,
-                    stage="encoding",
-                )
-
-            with tempfile.TemporaryDirectory(prefix="spotify-vid-") as tmp:
-                v_src = download_video(video_id, Path(tmp), quality=quality, progress_callback=on_sp_dl)
-                encode_mp4(v_src, mp4_path, start_sec, end_sec, progress_callback=on_sp_enc)
-
         if not title or not description:
             try:
                 d = video_details(video_id)
@@ -639,8 +963,28 @@ def spotify_upload_worker(
                 if not description:
                     description = ""
 
+        set_spotify_state("preparing", "Preparando capa quadrada do episódio...", stage="artwork")
+        art_path = ensure_artwork(video_id, custom_cover_b64, title)
+
+        def on_sp_dl(pct: float, spd: str, eta: str):
+            set_spotify_state("preparing", f"Baixando vídeo ({quality}p)... {pct:.1f}%",
+                              progress=int(pct), speed=spd, eta=eta, stage="downloading")
+
+        def on_sp_enc(pct: float, spd: str, eta: str):
+            set_spotify_state("preparing", f"Recortando e otimizando vídeo MP4 (+faststart)... {pct:.1f}%",
+                              progress=int(pct), speed=spd, eta=eta, stage="encoding")
+
+        def on_sp_report(stage: str, msg: str, pct: int):
+            set_spotify_state("preparing", msg, progress=pct, stage=stage)
+
+        # Reutiliza o MP4 exportado SOMENTE se o corte/qualidade coincidirem (meta.json)
+        export = ensure_export_mp4(
+            video_id, start_str, end_str, quality, title,
+            on_dl=on_sp_dl, on_enc=on_sp_enc, report=on_sp_report,
+        )
+
         run_spotify_upload(
-            video_path=mp4_path,
+            video_path=export["mp4"],
             artwork_path=art_path if art_path.exists() else None,
             title=title,
             description=description or "",
@@ -657,24 +1001,18 @@ def manual_export_worker(
     quality: str = "720",
     force: bool = False,
     title: str | None = None,
+    custom_cover_b64: str | None = None,
+    kind: str = "mp4",
 ) -> None:
     MANUAL_EXPORT_CANCEL_EVENT.clear()
     MANUAL_EXPORT_PROCS.clear()
-
-    exports_dir = Path("exports").resolve()
-    exports_dir.mkdir(exist_ok=True)
-    cache_dir = exports_dir / ".cache"
-    cache_dir.mkdir(exist_ok=True)
-
-    mp4_path = exports_dir / f"{video_id}.mp4"
-    art_path = exports_dir / f"{video_id}.jpg"
-    meta_path = exports_dir / f"{video_id}.meta.json"
+    with MANUAL_EXPORT_LOCK:
+        MANUAL_EXPORT_TASK.update({"kind": kind, "download_url": None, "filename": None, "error": None})
 
     # Se o título não foi passado, tenta obter via YouTube para nomear os arquivos
     if not title or not str(title).strip():
         try:
-            details = video_details(video_id)
-            title = details.get("title", "")
+            title = video_details(video_id).get("title", "")
         except Exception:
             title = ""
 
@@ -686,135 +1024,59 @@ def manual_export_worker(
 
     try:
         start_sec, end_sec = normalize_cut_bounds(start_str, end_str)
+        is_cut = start_sec is not None and end_sec is not None
 
-        is_cut = (start_sec is not None and end_sec is not None)
-        enc_stage = "encoding" if is_cut else "packaging"
-        enc_action = "Recortando e otimizando vídeo MP4" if is_cut else "Otimizando vídeo completo"
+        def on_report(stage: str, msg: str, pct: int):
+            set_manual_export("running", msg, progress=pct if pct < 100 else 99, stage=stage, video_id=video_id)
 
-        set_manual_export(
-            "running",
-            f"Preparando exportação do vídeo {video_id} ({quality}p)...",
-            progress=5,
-            stage="downloading",
-            video_id=video_id,
-        )
+        if kind == "mp3":
+            set_manual_export("running", f"Preparando áudio MP3 do vídeo {video_id}...",
+                              progress=5, speed="--", eta="--", stage="downloading", video_id=video_id)
 
-        if not art_path.exists():
-            set_manual_export("running", "Gerando capa quadrada do episódio...", 10, stage="artwork", video_id=video_id)
-            generate_episode_artwork(video_id, art_path)
+            def on_dl_a(pct: float, spd: str, eta: str):
+                set_manual_export("running", f"Baixando áudio do YouTube... {pct:.1f}%",
+                                  progress=int(10 + (pct * 0.45)), speed=spd, eta=eta, stage="downloading", video_id=video_id)
 
-        # Se forçado ou o arquivo atual não bater com o corte, apaga o mp4 de export anterior
-        if mp4_path.exists():
-            try:
-                mp4_path.unlink()
-            except Exception:
-                pass
-        if meta_path.exists():
-            try:
-                meta_path.unlink()
-            except Exception:
-                pass
+            def on_enc_a(pct: float, spd: str, eta: str):
+                set_manual_export("running", f"Normalizando e gerando MP3... {pct:.1f}%",
+                                  progress=int(55 + (pct * 0.43)), speed=spd, eta=eta, stage="encoding", video_id=video_id)
 
-        def on_dl(pct: float, spd: str, eta: str):
-            mapped = int(10 + (pct * 0.45))
-            set_manual_export(
-                "running",
-                f"Baixando vídeo do YouTube ({quality}p)... {pct:.1f}%",
-                progress=mapped,
-                speed=spd,
-                eta=eta,
-                stage="downloading",
-                video_id=video_id,
+            export = ensure_export_mp3(
+                video_id, start_str, end_str, title, custom_cover_b64,
+                force=force, on_dl=on_dl_a, on_enc=on_enc_a, report=on_report,
+                cancel=is_manual_cancelled, register=reg_manual_proc,
             )
-
-        def on_enc(pct: float, spd: str, eta: str):
-            mapped = int(55 + (pct * 0.43))
-            set_manual_export(
-                "running",
-                f"{enc_action} (+faststart)... {pct:.1f}%",
-                progress=mapped,
-                speed=spd,
-                eta=eta,
-                stage=enc_stage,
-                video_id=video_id,
-            )
-
-        # Reutiliza o vídeo bruto em cache se já tiver sido baixado do YouTube antes!
-        raw_source_path = cache_dir / f"raw_{video_id}_{quality}.mp4"
-        if raw_source_path.exists() and raw_source_path.stat().st_size > 100_000:
-            set_manual_export("running", f"Reutilizando vídeo baixado do cache local ({quality}p)...", 50, stage=enc_stage, video_id=video_id)
-            v_src = raw_source_path
+            size_mb = export["size"] // 1024 // 1024
+            completed_msg = f"Áudio MP3 {'recortado ' if is_cut else ''}pronto! ({size_mb} MB)"
+            ext = "mp3"
         else:
-            set_manual_export("running", f"Baixando vídeo do YouTube ({quality}p)...", 10, stage="downloading", video_id=video_id)
-            with tempfile.TemporaryDirectory(prefix="dl-raw-") as dl_tmp:
-                dl_file = download_video(
-                    video_id,
-                    Path(dl_tmp),
-                    quality=quality,
-                    progress_callback=on_dl,
-                    cancellation_check=is_manual_cancelled,
-                    register_proc=reg_manual_proc,
-                )
-                if dl_file.exists():
-                    shutil.copy2(str(dl_file), str(raw_source_path))
-            v_src = raw_source_path
+            enc_stage = "encoding" if is_cut else "packaging"
+            enc_action = "Recortando e otimizando vídeo MP4" if is_cut else "Otimizando vídeo completo"
 
-        set_manual_export("running", f"{enc_action} com FFmpeg...", 55, stage=enc_stage, video_id=video_id)
-        encode_mp4(
-            v_src,
-            mp4_path,
-            start_sec,
-            end_sec,
-            progress_callback=on_enc,
-            cancellation_check=is_manual_cancelled,
-            register_proc=reg_manual_proc,
-        )
+            set_manual_export("running", f"Preparando exportação do vídeo {video_id} ({quality}p)...",
+                              progress=5, speed="--", eta="--", stage="downloading", video_id=video_id)
 
-        # Salva o arquivo de metadados garantindo o registro exato do corte e título
-        meta_data = {
-            "video_id": video_id,
-            "title": title or "",
-            "start_str": start_str,
-            "end_str": end_str,
-            "start_sec": start_sec,
-            "end_sec": end_sec,
-            "quality": quality,
-            "is_cut": is_cut,
-            "size": mp4_path.stat().st_size,
-            "updated_at": time.time(),
-        }
-        meta_path.write_text(json.dumps(meta_data, indent=2), encoding="utf-8")
+            set_manual_export("running", "Preparando capa quadrada do episódio...", 8, stage="artwork", video_id=video_id)
+            ensure_artwork(video_id, custom_cover_b64, title)
 
-        # Cria cópia/link com o nome amigável baseado no Título do Episódio na pasta exports/
-        friendly_video_name = get_download_filename(f"{video_id}.mp4", title)
-        if title and title.strip():
-            friendly_video_path = exports_dir / friendly_video_name
-            try:
-                if friendly_video_path.exists():
-                    friendly_video_path.unlink()
-                try:
-                    os.link(str(mp4_path), str(friendly_video_path))
-                except Exception:
-                    shutil.copy2(str(mp4_path), str(friendly_video_path))
-            except Exception as e:
-                LOG.warning("Não foi possível criar link amigável do vídeo: %s", e)
+            def on_dl(pct: float, spd: str, eta: str):
+                set_manual_export("running", f"Baixando vídeo do YouTube ({quality}p)... {pct:.1f}%",
+                                  progress=int(10 + (pct * 0.45)), speed=spd, eta=eta, stage="downloading", video_id=video_id)
 
-            if art_path.exists():
-                friendly_art_name = get_download_filename(f"{video_id}.jpg", title)
-                friendly_art_path = exports_dir / friendly_art_name
-                try:
-                    if friendly_art_path.exists():
-                        friendly_art_path.unlink()
-                    try:
-                        os.link(str(art_path), str(friendly_art_path))
-                    except Exception:
-                        shutil.copy2(str(art_path), str(friendly_art_path))
-                except Exception as e:
-                    LOG.warning("Não foi possível criar link amigável da capa: %s", e)
+            def on_enc(pct: float, spd: str, eta: str):
+                set_manual_export("running", f"{enc_action} (+faststart)... {pct:.1f}%",
+                                  progress=int(55 + (pct * 0.43)), speed=spd, eta=eta, stage=enc_stage, video_id=video_id)
 
-        v_size_mb = mp4_path.stat().st_size // 1024 // 1024
-        completed_msg = f"Vídeo recortado e pronto! ({v_size_mb} MB)" if is_cut else f"Vídeo completo pronto para download! ({v_size_mb} MB)"
-        dl_url = f"/exports/{video_id}.mp4?v={int(time.time())}"
+            export = ensure_export_mp4(
+                video_id, start_str, end_str, quality, title,
+                force=force, on_dl=on_dl, on_enc=on_enc, report=on_report,
+                cancel=is_manual_cancelled, register=reg_manual_proc,
+            )
+            size_mb = export["size"] // 1024 // 1024
+            completed_msg = f"Vídeo recortado e pronto! ({size_mb} MB)" if is_cut else f"Vídeo completo pronto para download! ({size_mb} MB)"
+            ext = "mp4"
+
+        dl_url = f"/exports/{video_id}.{ext}?v={int(time.time())}"
         if title and title.strip():
             dl_url += f"&title={urllib.parse.quote(title.strip())}"
         set_manual_export(
@@ -826,36 +1088,12 @@ def manual_export_worker(
             stage="complete",
             video_id=video_id,
             download_url=dl_url,
-            filename=friendly_video_name,
-        )
-    except InterruptedError:
-        LOG.info("manual_export_worker cancelado pelo usuário.")
-        if mp4_path.exists():
-            try:
-                mp4_path.unlink()
-            except Exception:
-                pass
-        set_manual_export(
-            "idle",
-            "Download cancelado pelo usuário.",
-            progress=0,
-            stage="idle",
-            video_id=video_id,
+            filename=get_download_filename(f"{video_id}.{ext}", title),
         )
     except Exception as exc:
-        if MANUAL_EXPORT_CANCEL_EVENT.is_set():
-            if mp4_path.exists():
-                try:
-                    mp4_path.unlink()
-                except Exception:
-                    pass
-            set_manual_export(
-                "idle",
-                "Download cancelado pelo usuário.",
-                progress=0,
-                stage="idle",
-                video_id=video_id,
-            )
+        if isinstance(exc, InterruptedError) or MANUAL_EXPORT_CANCEL_EVENT.is_set():
+            LOG.info("manual_export_worker cancelado pelo usuário.")
+            set_manual_export("idle", "Download cancelado pelo usuário.", progress=0, stage="idle", video_id=video_id)
             return
         LOG.exception("Erro ao gerar vídeo manual: %s", exc)
         set_manual_export("error", f"Falha ao gerar vídeo: {exc}", 0, stage="error", error=str(exc), video_id=video_id)
@@ -989,17 +1227,14 @@ class StudioHandler(BaseHTTPRequestHandler):
             mp4_size = mp4_file.stat().st_size if mp4_exists else 0
             mp4_formatted = f"{mp4_size // 1024 // 1024} MB" if mp4_exists else None
 
-            mp4_matches_cut = False
+            mp4_matches_cut = bool(export_matches(v_id, req_start_sec, req_end_sec, quality_q))
             saved_meta = None
-            if mp4_exists and meta_file.is_file():
+            if meta_file.is_file():
                 try:
                     saved_meta = json.loads(meta_file.read_text(encoding="utf-8"))
-                    if (saved_meta.get("start_sec") == req_start_sec and 
-                        saved_meta.get("end_sec") == req_end_sec and
-                        saved_meta.get("quality", "720") == quality_q):
-                        mp4_matches_cut = True
                 except Exception:
                     pass
+            raw_cached = any((exports_dir / ".cache").glob(f"raw_{v_id}_*.mp4")) if (exports_dir / ".cache").is_dir() else False
 
             self.send_json({
                 "video_id": v_id,
@@ -1009,6 +1244,9 @@ class StudioHandler(BaseHTTPRequestHandler):
                 "mp4_formatted": mp4_formatted,
                 "art_exists": art_file.is_file(),
                 "mp3_exists": mp3_file.is_file(),
+                "mp3_matches_cut": bool(mp3_export_matches(v_id, req_start_sec, req_end_sec)),
+                "mp3_formatted": f"{mp3_file.stat().st_size // 1024 // 1024} MB" if mp3_file.is_file() else None,
+                "raw_cached": raw_cached,
                 "saved_meta": saved_meta,
             })
             return
@@ -1068,6 +1306,7 @@ class StudioHandler(BaseHTTPRequestHandler):
                         duration = item.findtext("{http://www.itunes.com/dtds/podcast-1.0.dtd}duration", default="0")
                         episodes.append({
                             "guid": guid,
+                            "video_id": item_video_id(item),
                             "title": title,
                             "description": desc,
                             "pubDate": pub_date,
@@ -1243,38 +1482,40 @@ class StudioHandler(BaseHTTPRequestHandler):
             start = body.get("start")
             end = body.get("end")
             force = bool(body.get("force", False))
-            title = body.get("title", "").strip()
+            title = (body.get("title") or "").strip()
+            custom_cover_b64 = body.get("custom_cover")
 
-            exports_dir = Path("exports").resolve()
-            mp4_file = exports_dir / f"{video_id}.mp4"
-            meta_file = exports_dir / f"{video_id}.meta.json"
-
+            kind = "mp3" if body.get("kind") == "mp3" else "mp4"
+            mp4_file = get_exports_dir() / f"{video_id}.{kind}"
             req_start_sec, req_end_sec = normalize_cut_bounds(start, end)
 
             # Só considera pronto se o arquivo existe e o corte coincide perfeitamente!
-            if mp4_file.is_file() and not force:
-                matches_existing = False
-                if meta_file.is_file():
-                    try:
-                        meta = json.loads(meta_file.read_text(encoding="utf-8"))
-                        if (meta.get("start_sec") == req_start_sec and 
-                            meta.get("end_sec") == req_end_sec and 
-                            meta.get("quality", "720") == quality):
-                            matches_existing = True
-                            if not title:
-                                title = meta.get("title", "")
-                    except Exception:
-                        pass
-                elif req_start_sec is None and req_end_sec is None:
-                    matches_existing = True
-
-                if matches_existing:
-                    dl_name = get_download_filename(f"{video_id}.mp4", title)
-                    dl_url = f"/exports/{video_id}.mp4?v={int(time.time())}"
+            if not force:
+                if kind == "mp3":
+                    if custom_cover_b64:
+                        try:
+                            ensure_artwork(video_id, custom_cover_b64, title)  # capa mudou → MP3 regenera
+                        except Exception as exc:
+                            LOG.warning("Falha ao atualizar capa personalizada: %s", exc)
+                    meta = mp3_export_matches(video_id, req_start_sec, req_end_sec)
+                else:
+                    meta = export_matches(video_id, req_start_sec, req_end_sec, quality)
+                if meta:
+                    if not title:
+                        title = meta.get("title", "")
+                    link_friendly_copy(mp4_file, title)
+                    if custom_cover_b64:
+                        try:
+                            ensure_artwork(video_id, custom_cover_b64, title)
+                        except Exception as exc:
+                            LOG.warning("Falha ao atualizar capa personalizada: %s", exc)
+                    dl_name = get_download_filename(f"{video_id}.{kind}", title)
+                    dl_url = f"/exports/{video_id}.{kind}?v={int(time.time())}"
                     if title:
                         dl_url += f"&title={urllib.parse.quote(title)}"
                     self.send_json({
                         "status": "ready",
+                        "kind": kind,
                         "video_id": video_id,
                         "download_url": dl_url,
                         "filename": dl_name,
@@ -1282,18 +1523,20 @@ class StudioHandler(BaseHTTPRequestHandler):
                         "size_formatted": f"{mp4_file.stat().st_size // 1024 // 1024} MB",
                     })
                     return
-                else:
-                    # Corte ou qualidade diferentes: força nova geração!
-                    force = True
+                # Corte ou qualidade diferentes: força nova geração!
+                force = True
 
             curr_state = get_manual_export_state()
-            if curr_state.get("status") == "running" and curr_state.get("video_id") == video_id:
-                self.send_json({"status": "running", "message": "Download já em andamento."})
+            if curr_state.get("status") == "running":
+                if curr_state.get("video_id") == video_id:
+                    self.send_json({"status": "running", "message": "Download já em andamento."})
+                else:
+                    self.send_json({"error": "Já existe uma exportação de outro vídeo em andamento. Cancele-a primeiro."}, status=409)
                 return
 
             thread = threading.Thread(
                 target=manual_export_worker,
-                args=(video_id, start, end, quality, force, title),
+                args=(video_id, start, end, quality, force, title, custom_cover_b64, kind),
                 daemon=True,
             )
             thread.start()
@@ -1302,30 +1545,18 @@ class StudioHandler(BaseHTTPRequestHandler):
 
         if path == "/api/prepare-cover":
             raw_id = body.get("video_id", "")
-            title = body.get("title", "").strip()
+            title = (body.get("title") or "").strip()
             try:
                 video_id = parse_video_id(raw_id)
             except ValueError as exc:
                 self.send_json({"error": str(exc)}, status=400)
                 return
-            exports_dir = Path("exports").resolve()
-            exports_dir.mkdir(exist_ok=True)
-            art_file = exports_dir / f"{video_id}.jpg"
-            if not art_file.exists():
-                generate_episode_artwork(video_id, art_file)
-
-            if title and art_file.exists():
-                friendly_art_name = get_download_filename(f"{video_id}.jpg", title)
-                friendly_art_path = exports_dir / friendly_art_name
-                try:
-                    if friendly_art_path.exists():
-                        friendly_art_path.unlink()
-                    try:
-                        os.link(str(art_file), str(friendly_art_path))
-                    except Exception:
-                        shutil.copy2(str(art_file), str(friendly_art_path))
-                except Exception:
-                    pass
+            try:
+                # Respeita a capa personalizada (colada/escolhida) do Studio
+                ensure_artwork(video_id, body.get("custom_cover"), title)
+            except Exception as exc:
+                self.send_json({"error": f"Falha ao gerar capa: {exc}"}, status=500)
+                return
 
             dl_name = get_download_filename(f"{video_id}.jpg", title)
             dl_url = f"/exports/{video_id}.jpg?v={int(time.time())}"
@@ -1389,7 +1620,7 @@ class StudioHandler(BaseHTTPRequestHandler):
                 return
 
             sp_state = get_spotify_state()
-            if sp_state.get("status") in ("opening_browser", "waiting_login", "uploading", "filling_details"):
+            if sp_state.get("status") in ("preparing", "opening_browser", "waiting_login", "uploading", "filling_details"):
                 self.send_json({"error": "Já existe uma automação do Spotify em andamento!"}, status=409)
                 return
 
@@ -1398,10 +1629,11 @@ class StudioHandler(BaseHTTPRequestHandler):
             quality = body.get("quality", "720")
             start = body.get("start")
             end = body.get("end")
+            custom_cover_b64 = body.get("custom_cover")
 
             thread = threading.Thread(
                 target=spotify_upload_worker,
-                args=(video_id, title, description, quality, start, end),
+                args=(video_id, title, description, quality, start, end, custom_cover_b64),
                 daemon=True,
             )
             thread.start()
@@ -1446,7 +1678,8 @@ class StudioHandler(BaseHTTPRequestHandler):
 
 def main() -> None:
     port = int(os.environ.get("PORT", 8000))
-    server = HTTPServer(("0.0.0.0", port), StudioHandler)
+    server = ThreadingHTTPServer(("0.0.0.0", port), StudioHandler)
+    server.daemon_threads = True
     url = f"http://localhost:{port}"
     print(f"\n🎙️  Podcast Studio Núcleo da Fé rodando em: {url}\n")
     print("Pressione Ctrl+C para encerrar o servidor.\n")

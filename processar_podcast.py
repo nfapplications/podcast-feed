@@ -382,7 +382,13 @@ def download_video(
         "--no-playlist",
         "--no-warnings",
         "--remote-components", "ejs:github",
-        "-f", f"bv*[height<={height}][ext=mp4]+ba[ext=m4a]/bv*[height<={height}]+ba/b[height<={height}]/b",
+        # Prefere H.264 (avc1): compatível com QuickTime, Spotify e Apple. AV1/VP9 só como último recurso.
+        "-f", (
+            f"bv*[height<={height}][vcodec^=avc1]+ba[ext=m4a]/"
+            f"bv*[height<={height}][vcodec^=avc1]+ba/"
+            f"b[height<={height}][vcodec^=avc1]/"
+            f"bv*[height<={height}][ext=mp4]+ba[ext=m4a]/bv*[height<={height}]+ba/b[height<={height}]/b"
+        ),
         "--merge-output-format", "mp4",
         "--newline",
         "--progress-template", "PROGRESS:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s",
@@ -401,6 +407,27 @@ def download_video(
     if not files:
         raise RuntimeError(f"Download do vídeo de {video_id} não gerou arquivo.")
     return files[0]
+
+
+def probe_codecs(path: Path) -> tuple[str, str]:
+    """Retorna (codec_video, codec_audio) do arquivo, ex.: ('h264', 'aac')."""
+    try:
+        out = run([
+            "ffprobe", "-v", "error", "-show_entries", "stream=codec_type,codec_name",
+            "-of", "json", str(path),
+        ])
+        streams = json.loads(out).get("streams", [])
+    except Exception:
+        return "", ""
+    v = next((st.get("codec_name", "") for st in streams if st.get("codec_type") == "video"), "")
+    a = next((st.get("codec_name", "") for st in streams if st.get("codec_type") == "audio"), "")
+    return v, a
+
+
+def is_compatible_mp4(path: Path) -> bool:
+    """H.264 + AAC: o único combo aceito por QuickTime, Spotify e Apple Podcasts sem conversão."""
+    v, a = probe_codecs(path)
+    return v == "h264" and a in ("aac", "")
 
 
 def encode_mp4(
@@ -431,7 +458,11 @@ def encode_mp4(
     if start is not None and end is not None and start >= end:
         is_full_video = True
 
-    # Quando não há corte, executa remux ultra rápido (-c copy) com +faststart em 2 segundos
+    # Quando não há corte, executa remux ultra rápido (-c copy) com +faststart em 2 segundos.
+    # Só é seguro se a origem já for H.264/AAC; AV1/VP9 copiados não abrem no QuickTime/Spotify.
+    if is_full_video and not is_compatible_mp4(source):
+        LOG.info("Origem não é H.264/AAC (%s); convertendo para H.264.", probe_codecs(source))
+        is_full_video = False
     if is_full_video:
         try:
             if progress_callback:
@@ -452,6 +483,8 @@ def encode_mp4(
             proc.wait()
             if cancellation_check and cancellation_check():
                 raise InterruptedError("Cancelado pelo usuário.")
+            if proc.returncode != 0 or not output.exists() or output.stat().st_size == 0:
+                raise RuntimeError(f"ffmpeg -c copy retornou {proc.returncode}")
             if progress_callback:
                 progress_callback(100.0, "Concluído", "00:00")
             return output.stat().st_size, int(total_dur)
@@ -571,7 +604,68 @@ def generate_episode_artwork(video_id: str, output_path: Path, custom_image_byte
     return output_path
 
 
-def encode_mp3(source: Path, output: Path, start: int | None, end: int | None, artwork_path: Path | None = None) -> tuple[int, int]:
+def _run_ffmpeg_with_progress(
+    command: list[str],
+    target_dur: float,
+    progress_callback: Any = None,
+    cancellation_check: Any = None,
+    register_proc: Any = None,
+) -> None:
+    """Executa o ffmpeg reportando % via -progress e permitindo cancelamento."""
+    cmd = command[:-1] + ["-progress", "pipe:1", "-nostats", command[-1]]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+    if register_proc:
+        try:
+            register_proc(proc)
+        except Exception:
+            pass
+    t0 = time.time()
+    try:
+        if proc.stdout:
+            for line in proc.stdout:
+                if cancellation_check and cancellation_check():
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=1.0)
+                    except Exception:
+                        proc.kill()
+                    raise InterruptedError("Codificação cancelada pelo usuário.")
+                line = line.strip()
+                if progress_callback and line.startswith("out_time_us=") and target_dur > 0:
+                    try:
+                        cur = int(line.split("=")[1]) / 1_000_000.0
+                        pct = min(99.0, (cur / target_dur) * 100.0)
+                        elapsed = max(0.001, time.time() - t0)
+                        speed = cur / elapsed
+                        eta = (target_dur - cur) / speed if speed > 0 else 0
+                        progress_callback(pct, f"{speed:.0f}x", f"{int(eta) // 60:02d}:{int(eta) % 60:02d}")
+                    except Exception:
+                        pass
+        proc.wait()
+    finally:
+        if proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=1.0)
+            except Exception:
+                proc.kill()
+    if cancellation_check and cancellation_check():
+        raise InterruptedError("Codificação cancelada pelo usuário.")
+    if proc.returncode != 0:
+        err = proc.stderr.read() if proc.stderr else ""
+        raise RuntimeError(f"Erro no FFmpeg: {err[-500:]}")
+
+
+def encode_mp3(
+    source: Path,
+    output: Path,
+    start: int | None,
+    end: int | None,
+    artwork_path: Path | None = None,
+    progress_callback: Any = None,
+    cancellation_check: Any = None,
+    register_proc: Any = None,
+) -> tuple[int, int]:
     command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
     if start is not None and end is not None:
         command += ["-ss", str(start), "-t", str(end - start)]
@@ -587,7 +681,6 @@ def encode_mp3(source: Path, output: Path, start: int | None, end: int | None, a
             "-metadata:s:v", 'title="Album cover"',
             "-metadata:s:v", 'comment="Cover (front)"',
             "-disposition:v:0", "attached_pic",
-            "-shortest",
             str(output),
         ]
     else:
@@ -596,7 +689,16 @@ def encode_mp3(source: Path, output: Path, start: int | None, end: int | None, a
             "-c:a", "libmp3lame", "-b:a", "128k", str(output),
         ]
 
-    run(command)
+    if start is not None and end is not None:
+        target_dur = float(end - start)
+    else:
+        try:
+            target_dur = float(json.loads(run([
+                "ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", str(source),
+            ]))["format"]["duration"])
+        except Exception:
+            target_dur = 0.0
+    _run_ffmpeg_with_progress(command, target_dur, progress_callback, cancellation_check, register_proc)
     size = output.stat().st_size
     if size == 0:
         raise RuntimeError("FFmpeg gerou um MP3 vazio.")

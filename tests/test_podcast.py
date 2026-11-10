@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 import xml.etree.ElementTree as ET
 
 from processar_podcast import (
@@ -173,6 +174,67 @@ class PodcastTests(unittest.TestCase):
         thumb_name = get_download_filename("H_tIiMrPt78_thumb.jpg", title)
         self.assertTrue(thumb_name.endswith(" - 16-9.jpg"))
         self.assertTrue(thumb_name.startswith(base))
+
+    def test_feed_video_id_matching_and_replace(self):
+        from server import item_video_id, feed_video_ids, remove_existing_episode
+        channel = ET.Element("channel")
+        a = ET.SubElement(channel, "item"); ET.SubElement(a, "guid").text = "yt:H_tIiMrPt78"
+        b = ET.SubElement(channel, "item"); ET.SubElement(b, "guid").text = "3511e6b5-0850-4ae0-864c-a3fb168b5cee"
+        ET.SubElement(b, "link").text = "https://podcasters.spotify.com/pod/show/x/episodes/y"
+        c = ET.SubElement(channel, "item"); ET.SubElement(c, "guid").text = "abc"
+        ET.SubElement(c, "description").text = "Vídeo oficial no YouTube: https://www.youtube.com/watch?v=5CyVFrCs5Pk"
+        self.assertEqual(item_video_id(a), "H_tIiMrPt78")
+        self.assertIsNone(item_video_id(b))
+        self.assertEqual(item_video_id(c), "5CyVFrCs5Pk")
+        self.assertEqual(feed_video_ids(channel), {"H_tIiMrPt78", "5CyVFrCs5Pk"})
+        self.assertEqual(remove_existing_episode(channel, "H_tIiMrPt78"), 1)
+        self.assertEqual(len(channel.findall("item")), 2)
+
+    def test_export_matches_uses_meta_cut_and_quality(self):
+        import json, os, tempfile
+        from unittest import mock
+        import server
+        from server import export_matches
+        old_cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(server, "is_compatible_mp4", return_value=True) as compat:
+            os.chdir(tmp)
+            try:
+                Path("exports").mkdir()
+                Path("exports/AAAAAAAAAAA.mp4").write_bytes(b"x" * 10)
+                # Sem meta: só vale para vídeo completo
+                self.assertIsNotNone(export_matches("AAAAAAAAAAA", None, None, "720"))
+                self.assertIsNone(export_matches("AAAAAAAAAAA", 0, 3600, "720"))
+                Path("exports/AAAAAAAAAAA.meta.json").write_text(json.dumps(
+                    {"start_sec": 0, "end_sec": 3600, "quality": "720"}))
+                self.assertIsNotNone(export_matches("AAAAAAAAAAA", 0, 3600, "720"))
+                self.assertIsNone(export_matches("AAAAAAAAAAA", 0, 3600, "1080"))
+                self.assertIsNone(export_matches("AAAAAAAAAAA", 60, 3600, "720"))
+                self.assertIsNone(export_matches("AAAAAAAAAAA", None, None, "720"))
+                # MP4 com vídeo AV1/VP9 nunca é reaproveitado (QuickTime/Spotify mostram só áudio)
+                compat.return_value = False
+                self.assertIsNone(export_matches("AAAAAAAAAAA", 0, 3600, "720"))
+            finally:
+                os.chdir(old_cwd)
+
+    def test_encode_mp3_with_artwork_keeps_full_duration(self):
+        """Regressão: '-shortest' + capa embutida cortava o MP3 para ~0,04 s no ffmpeg 8."""
+        import shutil, subprocess, tempfile
+        if not shutil.which("ffmpeg"):
+            self.skipTest("ffmpeg não instalado")
+        from processar_podcast import encode_mp3
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            src, art, out = tmp / "src.m4a", tmp / "art.jpg", tmp / "out.mp3"
+            subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=8",
+                            "-c:a", "aac", str(src)], check=True)
+            subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=blue:s=64x64",
+                            "-frames:v", "1", str(art)], check=True)
+            seen = []
+            size, duration = encode_mp3(src, out, None, None, artwork_path=art, progress_callback=lambda *a: seen.append(a))
+            self.assertGreater(size, 0)
+            self.assertGreaterEqual(duration, 7)
+            size_cut, dur_cut = encode_mp3(src, out, 2, 6, artwork_path=art)
+            self.assertTrue(3 <= dur_cut <= 5)
 
 
 if __name__ == "__main__":
