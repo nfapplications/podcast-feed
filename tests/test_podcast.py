@@ -151,6 +151,29 @@ class PodcastTests(unittest.TestCase):
         self.assertTrue(res_pub["ok"])
         self.assertEqual(CURRENT_TASK["status"], "idle")
 
+    def test_download_filenames_with_episode_title_base(self):
+        from server import sanitize_filename, get_download_filename
+        title = "A Graça de Viver: O Poder da Fé / Pastor Paulo Itajahy"
+        base = sanitize_filename(title)
+        self.assertNotIn(":", base)
+        self.assertNotIn("/", base)
+        self.assertIn("A Graça de Viver", base)
+
+        # Video
+        video_name = get_download_filename("H_tIiMrPt78.mp4", title)
+        self.assertTrue(video_name.endswith(" - Video.mp4"))
+        self.assertTrue(video_name.startswith(base))
+
+        # Square photo 1:1
+        art_name = get_download_filename("H_tIiMrPt78.jpg", title)
+        self.assertTrue(art_name.endswith(" - 1x1.jpg"))
+        self.assertTrue(art_name.startswith(base))
+
+        # YouTube theme thumbnail 16:9
+        thumb_name = get_download_filename("H_tIiMrPt78_thumb.jpg", title)
+        self.assertTrue(thumb_name.endswith(" - 16-9.jpg"))
+        self.assertTrue(thumb_name.startswith(base))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -81,6 +81,7 @@ MANUAL_EXPORT_TASK: dict[str, Any] = {
     "stage": None,
     "video_id": None,
     "download_url": None,
+    "filename": None,
     "error": None,
 }
 MANUAL_EXPORT_LOCK = threading.Lock()
@@ -95,6 +96,7 @@ def set_manual_export(
     stage: str | None = None,
     video_id: str | None = None,
     download_url: str | None = None,
+    filename: str | None = None,
     error: str | None = None,
 ) -> None:
     with MANUAL_EXPORT_LOCK:
@@ -111,6 +113,8 @@ def set_manual_export(
             MANUAL_EXPORT_TASK["video_id"] = video_id
         if download_url is not None:
             MANUAL_EXPORT_TASK["download_url"] = download_url
+        if filename is not None:
+            MANUAL_EXPORT_TASK["filename"] = filename
         if error is not None:
             MANUAL_EXPORT_TASK["error"] = error
 
@@ -251,6 +255,37 @@ def normalize_cut_bounds(start_str: str | None, end_str: str | None) -> tuple[in
     if (start_sec is None or start_sec == 0) and end_sec is None:
         return None, None
     return start_sec, end_sec
+
+
+def sanitize_filename(name: str) -> str:
+    """Sanitiza o título do episódio para uso seguro em nomes de arquivo em todos os SOs."""
+    s = re.sub(r'\s*[\\/*?:\"<>|]+\s*', ' - ', name)
+    s = re.sub(r'\s+', ' ', s)
+    s = re.sub(r'(\s*-\s*)+', ' - ', s)
+    return s.strip(' .-') or 'Episodio'
+
+
+def get_download_filename(file_name: str, title: str | None = None) -> str:
+    """Gera o nome de arquivo com base fixa no título e sufixos padronizados:
+    - Vídeo: '{Titulo} - Video.mp4'
+    - Capa quadrada 1:1: '{Titulo} - 1x1.jpg'
+    - Foto do tema 16:9: '{Titulo} - 16-9.jpg'
+    - Áudio: '{Titulo} - Audio.mp3'
+    """
+    if not title or not str(title).strip():
+        return file_name
+    base = sanitize_filename(str(title).strip())
+    lower = file_name.lower()
+    if lower.endswith(".mp4"):
+        return f"{base} - Video.mp4"
+    if lower.endswith("_thumb.jpg") or "16-9" in lower or "16x9" in lower or "thumb" in lower:
+        return f"{base} - 16-9.jpg"
+    if lower.endswith(".jpg") or lower.endswith(".jpeg"):
+        return f"{base} - 1x1.jpg"
+    if lower.endswith(".mp3"):
+        return f"{base} - Audio.mp3"
+    ext = Path(file_name).suffix
+    return f"{base}{ext}"
 
 
 MANUAL_EXPORT_CANCEL_EVENT = threading.Event()
@@ -477,16 +512,34 @@ def publish_worker(
                 local_art = exports_dir / f"{video_id}.jpg"
                 shutil.copy2(str(art_file), str(local_art))
                 local_art_path = f"/exports/{video_id}.jpg"
+                if video_title:
+                    friendly_art = exports_dir / get_download_filename(f"{video_id}.jpg", video_title)
+                    try:
+                        shutil.copy2(str(art_file), str(friendly_art))
+                    except Exception:
+                        pass
 
             if (directory / f"{video_id}.mp4").exists():
                 local_mp4 = exports_dir / f"{video_id}.mp4"
                 shutil.copy2(str(directory / f"{video_id}.mp4"), str(local_mp4))
                 local_mp4_path = f"/exports/{video_id}.mp4"
+                if video_title:
+                    friendly_mp4 = exports_dir / get_download_filename(f"{video_id}.mp4", video_title)
+                    try:
+                        shutil.copy2(str(local_mp4), str(friendly_mp4))
+                    except Exception:
+                        pass
 
             if (directory / f"{video_id}.mp3").exists():
                 local_mp3 = exports_dir / f"{video_id}.mp3"
                 shutil.copy2(str(directory / f"{video_id}.mp3"), str(local_mp3))
                 local_mp3_path = f"/exports/{video_id}.mp3"
+                if video_title:
+                    friendly_mp3 = exports_dir / get_download_filename(f"{video_id}.mp3", video_title)
+                    try:
+                        shutil.copy2(str(local_mp3), str(friendly_mp3))
+                    except Exception:
+                        pass
 
             if git_push:
                 set_task("running", "Enviando alterações para o GitHub Pages...", 95, "Executando git commit e push...")
@@ -603,6 +656,7 @@ def manual_export_worker(
     end_str: str | None = None,
     quality: str = "720",
     force: bool = False,
+    title: str | None = None,
 ) -> None:
     MANUAL_EXPORT_CANCEL_EVENT.clear()
     MANUAL_EXPORT_PROCS.clear()
@@ -615,6 +669,14 @@ def manual_export_worker(
     mp4_path = exports_dir / f"{video_id}.mp4"
     art_path = exports_dir / f"{video_id}.jpg"
     meta_path = exports_dir / f"{video_id}.meta.json"
+
+    # Se o título não foi passado, tenta obter via YouTube para nomear os arquivos
+    if not title or not str(title).strip():
+        try:
+            details = video_details(video_id)
+            title = details.get("title", "")
+        except Exception:
+            title = ""
 
     def reg_manual_proc(p: subprocess.Popen):
         MANUAL_EXPORT_PROCS.add(p)
@@ -708,9 +770,10 @@ def manual_export_worker(
             register_proc=reg_manual_proc,
         )
 
-        # Salva o arquivo de metadados garantindo o registro exato do corte
+        # Salva o arquivo de metadados garantindo o registro exato do corte e título
         meta_data = {
             "video_id": video_id,
+            "title": title or "",
             "start_str": start_str,
             "end_str": end_str,
             "start_sec": start_sec,
@@ -722,8 +785,38 @@ def manual_export_worker(
         }
         meta_path.write_text(json.dumps(meta_data, indent=2), encoding="utf-8")
 
+        # Cria cópia/link com o nome amigável baseado no Título do Episódio na pasta exports/
+        friendly_video_name = get_download_filename(f"{video_id}.mp4", title)
+        if title and title.strip():
+            friendly_video_path = exports_dir / friendly_video_name
+            try:
+                if friendly_video_path.exists():
+                    friendly_video_path.unlink()
+                try:
+                    os.link(str(mp4_path), str(friendly_video_path))
+                except Exception:
+                    shutil.copy2(str(mp4_path), str(friendly_video_path))
+            except Exception as e:
+                LOG.warning("Não foi possível criar link amigável do vídeo: %s", e)
+
+            if art_path.exists():
+                friendly_art_name = get_download_filename(f"{video_id}.jpg", title)
+                friendly_art_path = exports_dir / friendly_art_name
+                try:
+                    if friendly_art_path.exists():
+                        friendly_art_path.unlink()
+                    try:
+                        os.link(str(art_path), str(friendly_art_path))
+                    except Exception:
+                        shutil.copy2(str(art_path), str(friendly_art_path))
+                except Exception as e:
+                    LOG.warning("Não foi possível criar link amigável da capa: %s", e)
+
         v_size_mb = mp4_path.stat().st_size // 1024 // 1024
         completed_msg = f"Vídeo recortado e pronto! ({v_size_mb} MB)" if is_cut else f"Vídeo completo pronto para download! ({v_size_mb} MB)"
+        dl_url = f"/exports/{video_id}.mp4?v={int(time.time())}"
+        if title and title.strip():
+            dl_url += f"&title={urllib.parse.quote(title.strip())}"
         set_manual_export(
             "completed",
             completed_msg,
@@ -732,7 +825,8 @@ def manual_export_worker(
             eta="00:00",
             stage="complete",
             video_id=video_id,
-            download_url=f"/exports/{video_id}.mp4?v={int(time.time())}",
+            download_url=dl_url,
+            filename=friendly_video_name,
         )
     except InterruptedError:
         LOG.info("manual_export_worker cancelado pelo usuário.")
@@ -823,16 +917,21 @@ class StudioHandler(BaseHTTPRequestHandler):
             return
 
         if path.startswith("/exports/"):
-            filename = Path(path).name
+            raw_filename = urllib.parse.unquote(Path(path).name)
             exports_dir = Path("exports").resolve()
-            file_path = (exports_dir / filename).resolve()
+            file_path = (exports_dir / raw_filename).resolve()
+            if not file_path.is_file():
+                for candidate in exports_dir.glob("*"):
+                    if candidate.name == raw_filename:
+                        file_path = candidate
+                        break
             if file_path.is_file() and str(file_path).startswith(str(exports_dir)):
                 mime = "application/octet-stream"
-                if filename.endswith(".mp4"):
+                if file_path.name.endswith(".mp4"):
                     mime = "video/mp4"
-                elif filename.endswith(".mp3"):
+                elif file_path.name.endswith(".mp3"):
                     mime = "audio/mpeg"
-                elif filename.endswith((".jpg", ".jpeg")):
+                elif file_path.name.endswith((".jpg", ".jpeg")):
                     mime = "image/jpeg"
 
                 stat = file_path.stat()
@@ -840,7 +939,20 @@ class StudioHandler(BaseHTTPRequestHandler):
                 self.send_header("Content-Type", mime)
                 self.send_header("Content-Length", str(stat.st_size))
                 if "download" in parsed.query:
-                    self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+                    query_params = urllib.parse.parse_qs(parsed.query)
+                    title_param = query_params.get("title", [None])[0]
+                    if not title_param:
+                        v_id = file_path.name.split(".")[0].replace("_thumb", "")
+                        meta_file = exports_dir / f"{v_id}.meta.json"
+                        if meta_file.is_file():
+                            try:
+                                title_param = json.loads(meta_file.read_text(encoding="utf-8")).get("title")
+                            except Exception:
+                                pass
+                    dl_name = get_download_filename(file_path.name, title_param)
+                    ascii_fn = re.sub(r'[^\x20-\x7E]', '_', dl_name)
+                    encoded_fn = urllib.parse.quote(dl_name, encoding='utf-8')
+                    self.send_header("Content-Disposition", f'attachment; filename="{ascii_fn}"; filename*=UTF-8\'\'{encoded_fn}')
                 self.end_headers()
                 with open(file_path, "rb") as f:
                     shutil.copyfileobj(f, self.wfile)
@@ -1131,6 +1243,7 @@ class StudioHandler(BaseHTTPRequestHandler):
             start = body.get("start")
             end = body.get("end")
             force = bool(body.get("force", False))
+            title = body.get("title", "").strip()
 
             exports_dir = Path("exports").resolve()
             mp4_file = exports_dir / f"{video_id}.mp4"
@@ -1148,16 +1261,23 @@ class StudioHandler(BaseHTTPRequestHandler):
                             meta.get("end_sec") == req_end_sec and 
                             meta.get("quality", "720") == quality):
                             matches_existing = True
+                            if not title:
+                                title = meta.get("title", "")
                     except Exception:
                         pass
                 elif req_start_sec is None and req_end_sec is None:
                     matches_existing = True
 
                 if matches_existing:
+                    dl_name = get_download_filename(f"{video_id}.mp4", title)
+                    dl_url = f"/exports/{video_id}.mp4?v={int(time.time())}"
+                    if title:
+                        dl_url += f"&title={urllib.parse.quote(title)}"
                     self.send_json({
                         "status": "ready",
                         "video_id": video_id,
-                        "download_url": f"/exports/{video_id}.mp4?v={int(time.time())}",
+                        "download_url": dl_url,
+                        "filename": dl_name,
                         "size": mp4_file.stat().st_size,
                         "size_formatted": f"{mp4_file.stat().st_size // 1024 // 1024} MB",
                     })
@@ -1173,7 +1293,7 @@ class StudioHandler(BaseHTTPRequestHandler):
 
             thread = threading.Thread(
                 target=manual_export_worker,
-                args=(video_id, start, end, quality, force),
+                args=(video_id, start, end, quality, force, title),
                 daemon=True,
             )
             thread.start()
@@ -1182,6 +1302,7 @@ class StudioHandler(BaseHTTPRequestHandler):
 
         if path == "/api/prepare-cover":
             raw_id = body.get("video_id", "")
+            title = body.get("title", "").strip()
             try:
                 video_id = parse_video_id(raw_id)
             except ValueError as exc:
@@ -1192,11 +1313,34 @@ class StudioHandler(BaseHTTPRequestHandler):
             art_file = exports_dir / f"{video_id}.jpg"
             if not art_file.exists():
                 generate_episode_artwork(video_id, art_file)
-            self.send_json({"status": "ready", "download_url": f"/exports/{video_id}.jpg"})
+
+            if title and art_file.exists():
+                friendly_art_name = get_download_filename(f"{video_id}.jpg", title)
+                friendly_art_path = exports_dir / friendly_art_name
+                try:
+                    if friendly_art_path.exists():
+                        friendly_art_path.unlink()
+                    try:
+                        os.link(str(art_file), str(friendly_art_path))
+                    except Exception:
+                        shutil.copy2(str(art_file), str(friendly_art_path))
+                except Exception:
+                    pass
+
+            dl_name = get_download_filename(f"{video_id}.jpg", title)
+            dl_url = f"/exports/{video_id}.jpg?v={int(time.time())}"
+            if title:
+                dl_url += f"&title={urllib.parse.quote(title)}"
+            self.send_json({
+                "status": "ready",
+                "download_url": dl_url,
+                "filename": dl_name,
+            })
             return
 
         if path == "/api/prepare-thumb":
             raw_id = body.get("video_id", "")
+            title = body.get("title", "").strip()
             try:
                 video_id = parse_video_id(raw_id)
             except ValueError as exc:
@@ -1211,10 +1355,28 @@ class StudioHandler(BaseHTTPRequestHandler):
                 except Exception as exc:
                     self.send_json({"error": str(exc)}, status=500)
                     return
+
+            if title and thumb_file.exists():
+                friendly_thumb_name = get_download_filename(f"{video_id}_thumb.jpg", title)
+                friendly_thumb_path = exports_dir / friendly_thumb_name
+                try:
+                    if friendly_thumb_path.exists():
+                        friendly_thumb_path.unlink()
+                    try:
+                        os.link(str(thumb_file), str(friendly_thumb_path))
+                    except Exception:
+                        shutil.copy2(str(thumb_file), str(friendly_thumb_path))
+                except Exception:
+                    pass
+
+            dl_name = get_download_filename(f"{video_id}_thumb.jpg", title)
+            dl_url = f"/exports/{video_id}_thumb.jpg?v={int(time.time())}"
+            if title:
+                dl_url += f"&title={urllib.parse.quote(title)}"
             self.send_json({
                 "status": "ready",
-                "download_url": f"/exports/{video_id}_thumb.jpg",
-                "filename": f"{video_id}_thumb.jpg",
+                "download_url": dl_url,
+                "filename": dl_name,
             })
             return
 

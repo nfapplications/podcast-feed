@@ -2297,6 +2297,17 @@
     }
   }
 
+  function triggerDownload(url, filename) {
+    const link = document.createElement('a');
+    link.href = url;
+    if (filename) {
+      link.download = filename;
+    }
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
   async function handleManualDownloadMp4() {
     const vInput = document.getElementById('video-input')?.value.trim();
     const vId = parseVideoId(vInput) || currentVideoId;
@@ -2304,6 +2315,7 @@
       alert("Por favor, selecione um vídeo primeiro!");
       return;
     }
+    const epTitle = document.getElementById('episode-title')?.value.trim() || "";
 
     let sVal = document.getElementById('display-start')?.value || document.getElementById('cut-start-input')?.value || "";
     let eVal = document.getElementById('display-end')?.value || document.getElementById('cut-end-input')?.value || "";
@@ -2332,7 +2344,8 @@
           start: start,
           end: end,
           quality: quality,
-          force: false
+          force: false,
+          title: epTitle
         })
       });
 
@@ -2350,7 +2363,9 @@
         btnMp4.classList.remove('btn-outline');
         btnMp4.classList.add('btn-primary');
         const sep = data.download_url.includes('?') ? '&' : '?';
-        window.location.href = data.download_url + sep + 'download=1';
+        const titleQuery = epTitle ? `&title=${encodeURIComponent(epTitle)}` : '';
+        const dlUrl = data.download_url + sep + 'download=1' + titleQuery;
+        triggerDownload(dlUrl, data.filename);
         showToast("📥 Download iniciado! Arquivo pronto no disco.");
         return;
       }
@@ -2414,7 +2429,11 @@
         btnMp4.classList.add('btn-primary');
 
         if (data.download_url) {
-          window.location.href = data.download_url + '?download=1';
+          const epTitle = document.getElementById('episode-title')?.value.trim() || "";
+          const sep = data.download_url.includes('?') ? '&' : '?';
+          const titleQuery = epTitle ? `&title=${encodeURIComponent(epTitle)}` : '';
+          const dlUrl = data.download_url + sep + 'download=1' + titleQuery;
+          triggerDownload(dlUrl, data.filename);
           showToast("🎉 Vídeo baixado com sucesso no seu computador!");
         }
       } else if (data.status === 'error') {
@@ -2486,6 +2505,7 @@
       alert("Por favor, selecione um vídeo primeiro!");
       return;
     }
+    const epTitle = document.getElementById('episode-title')?.value.trim() || "";
     const btnCover = document.getElementById('btn-download-cover');
     btnCover.disabled = true;
     btnCover.textContent = "⏳ Preparando capa...";
@@ -2493,14 +2513,17 @@
       const res = await fetch('/api/prepare-cover', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ video_id: vId })
+        body: JSON.stringify({ video_id: vId, title: epTitle })
       });
       const data = await res.json();
       btnCover.disabled = false;
       btnCover.textContent = "🖼️ Baixar Capa Quadrada (JPG)";
       if (data.download_url) {
-        window.location.href = data.download_url + '?download=1';
-        showToast("🖼️ Capa quadrada baixada com sucesso!");
+        const sep = data.download_url.includes('?') ? '&' : '?';
+        const titleQuery = epTitle ? `&title=${encodeURIComponent(epTitle)}` : '';
+        const dlUrl = data.download_url + sep + 'download=1' + titleQuery;
+        triggerDownload(dlUrl, data.filename);
+        showToast("🖼️ Capa quadrada (1x1) baixada com sucesso!");
       }
     } catch (e) {
       btnCover.disabled = false;
@@ -2583,19 +2606,23 @@ Contato: (61) 3386-2122`;
       alert("Por favor, selecione um vídeo primeiro!");
       return;
     }
+    const epTitle = document.getElementById('episode-title')?.value.trim() || "";
     const btn = document.getElementById('btn-download-thumb');
     if (btn) btn.disabled = true;
-    showToast("🖼️ Baixando Thumbnail HD do YouTube...");
+    showToast("🖼️ Baixando Foto do Tema (16:9)...");
     try {
       const res = await fetch('/api/prepare-thumb', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ video_id: vId })
+        body: JSON.stringify({ video_id: vId, title: epTitle })
       });
       const data = await res.json();
       if (data.download_url) {
-        window.location.href = data.download_url + '?download=1';
-        showToast("🖼️ Thumbnail do YouTube baixada com sucesso!");
+        const sep = data.download_url.includes('?') ? '&' : '?';
+        const titleQuery = epTitle ? `&title=${encodeURIComponent(epTitle)}` : '';
+        const dlUrl = data.download_url + sep + 'download=1' + titleQuery;
+        triggerDownload(dlUrl, data.filename);
+        showToast("🖼️ Foto do tema (16:9) baixada com sucesso!");
       } else {
         alert("Erro ao baixar thumbnail: " + (data.error || "Não encontrada"));
       }
