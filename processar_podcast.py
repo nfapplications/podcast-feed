@@ -8,6 +8,7 @@ O modo ``short`` publica transmissões completas de até 75 minutos.
 from __future__ import annotations
 
 import argparse
+import collections
 import io
 import json
 import logging
@@ -16,6 +17,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import tempfile
 import time
 import urllib.error
@@ -275,6 +277,14 @@ def existing_guids(channel: ET.Element) -> set[str]:
     return {item.findtext("guid", default="") for item in channel.findall("item")}
 
 
+# Argumentos extras do yt-dlp por thread (ex.: --limit-rate nos downloads em lote).
+YTDLP_THREAD_OPTS = threading.local()
+
+
+def thread_ytdlp_extra_args() -> list[str]:
+    return list(getattr(YTDLP_THREAD_OPTS, "extra_args", None) or [])
+
+
 def run_ytdlp_with_progress(
     cmd: list[str],
     progress_callback: Any = None,
@@ -295,6 +305,7 @@ def run_ytdlp_with_progress(
             pass
 
     progress_regex = re.compile(r"^PROGRESS:\s*([\d\.]+)%\|\s*([^|]+)\|\s*([^|\r\n]+)")
+    tail: collections.deque[str] = collections.deque(maxlen=12)
     try:
         if proc.stdout:
             for line in proc.stdout:
@@ -310,6 +321,8 @@ def run_ytdlp_with_progress(
                 if not line:
                     continue
                 m = progress_regex.match(line)
+                if not m:
+                    tail.append(line)
                 if m and progress_callback:
                     try:
                         pct = float(m.group(1))
@@ -331,7 +344,9 @@ def run_ytdlp_with_progress(
         raise InterruptedError("Download cancelado pelo usuário.")
 
     if proc.returncode != 0:
-        raise RuntimeError(f"Falha ao executar yt-dlp (código {proc.returncode})")
+        errors = [ln for ln in tail if "ERROR" in ln] or list(tail)[-2:]
+        detail = (" — " + " ".join(errors)[-400:]) if errors else ""
+        raise RuntimeError(f"Falha ao executar yt-dlp (código {proc.returncode}){detail}")
 
 
 def download_audio(
@@ -351,7 +366,7 @@ def download_audio(
         "--newline",
         "--progress-template", "PROGRESS:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s",
         "-o", str(directory / "source.%(ext)s"),
-    ]
+    ] + thread_ytdlp_extra_args()
     if Path("cookies.txt").exists():
         cmd += ["--cookies", "cookies.txt"]
     cmd.append(url)
@@ -393,7 +408,7 @@ def download_video(
         "--newline",
         "--progress-template", "PROGRESS:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s",
         "-o", str(directory / "source_video.%(ext)s"),
-    ]
+    ] + thread_ytdlp_extra_args()
     if Path("cookies.txt").exists():
         cmd += ["--cookies", "cookies.txt"]
     cmd.append(url)

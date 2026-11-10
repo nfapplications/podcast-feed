@@ -906,6 +906,53 @@
       .nudge-toolbar { background: rgba(15, 23, 42, 0.04); border-color: rgba(15, 23, 42, 0.08); }
       .timeline-track { background: rgba(15, 23, 42, 0.06); }
     }
+
+    /* ---------------- Downloads em Lote ---------------- */
+    .bt-row { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: flex-end; }
+    .bt-field { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+    .bt-field > label, .bt-label { font-size: 0.7rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+    .bt-field input[type="text"], .bt-field input[type="date"], .bt-field input[type="number"], .bt-field select { font-size: 0.82rem; padding: 0.45rem 0.6rem; }
+    .bt-check { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; cursor: pointer; white-space: nowrap; color: var(--text); }
+    .bt-bar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; padding: 0.6rem 0.75rem; background: var(--code-bg); border: 1px solid var(--code-border); border-radius: var(--radius); margin: 0.75rem 0; font-size: 0.8rem; }
+    .bt-bar select { font-size: 0.78rem; padding: 0.3rem 0.45rem; width: auto; }
+    .bt-spacer { flex: 1; }
+    .bt-table-wrap { overflow: auto; max-height: 62vh; border: 1px solid var(--card-border); border-radius: var(--radius); }
+    .bt-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    .bt-table th { position: sticky; top: 0; z-index: 2; background: var(--card-bg); text-align: left; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); padding: 0.5rem; border-bottom: 1px solid var(--card-border); white-space: nowrap; }
+    .bt-table th.sortable { cursor: pointer; user-select: none; }
+    .bt-table th.sortable:hover { color: var(--text); }
+    .bt-table td { padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--card-border); vertical-align: middle; }
+    .bt-table tr.sel td { background: color-mix(in srgb, var(--primary) 9%, transparent); }
+    .bt-table tr.done-row td { opacity: 0.72; }
+    .bt-table select, .bt-table input[type="text"] { font-size: 0.75rem; padding: 0.25rem 0.35rem; width: auto; }
+    .bt-thumb { width: 96px; aspect-ratio: 16/9; object-fit: cover; border-radius: 6px; display: block; background: var(--code-bg); }
+    .bt-title { font-weight: 600; line-height: 1.3; max-width: 360px; }
+    .bt-title a { color: inherit; text-decoration: none; }
+    .bt-title a:hover { text-decoration: underline; }
+    .bt-sub { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.15rem; display: flex; gap: 0.35rem; flex-wrap: wrap; align-items: center; }
+    .bt-tag { font-size: 0.62rem; font-weight: 700; padding: 0.05rem 0.4rem; border-radius: 999px; border: 1px solid var(--card-border); color: var(--text-muted); white-space: nowrap; }
+    .bt-tag.live { color: #fff; background: var(--danger); border-color: var(--danger); }
+    .bt-tag.ok { color: var(--success); border-color: var(--success); }
+    .bt-tag.warn { color: var(--warning); border-color: var(--warning); }
+    .bt-folder { display: flex; gap: 0.2rem; align-items: center; }
+    .bt-folder input { min-width: 230px; font-family: ui-monospace, Menlo, monospace; }
+    .bt-folder input.edited { border-color: var(--warning); }
+    .bt-foot { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; justify-content: space-between; margin-top: 0.75rem; }
+    .bt-stats { font-size: 0.8rem; color: var(--text-muted); }
+    .bt-stats strong { color: var(--text); }
+    .bt-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0.75rem; margin-top: 0.75rem; }
+    .bt-tokens { font-size: 0.68rem; color: var(--text-muted); margin-top: 0.2rem; line-height: 1.5; }
+    .bt-tokens code { cursor: pointer; background: var(--code-bg); border: 1px solid var(--code-border); border-radius: 4px; padding: 0 0.25rem; }
+    .bt-progress { height: 6px; border-radius: 999px; background: var(--input-border); overflow: hidden; min-width: 120px; }
+    .bt-progress > div { height: 100%; background: var(--primary); transition: width 0.4s ease; }
+    .bt-progress.done > div { background: var(--success); }
+    .bt-progress.err > div { background: var(--danger); }
+    .bt-job-msg { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.2rem; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bt-actions { display: flex; gap: 0.2rem; }
+    .bt-actions button { font-size: 0.75rem; padding: 0.2rem 0.4rem; }
+    .bt-banner { padding: 0.55rem 0.8rem; border-radius: var(--radius); font-size: 0.8rem; margin-bottom: 0.6rem; border: 1px solid var(--warning); color: var(--warning); background: color-mix(in srgb, var(--warning) 10%, transparent); }
+    .bt-paste { width: 100%; min-height: 70px; font-size: 0.8rem; font-family: ui-monospace, Menlo, monospace; }
+    .bt-empty { padding: 2rem; text-align: center; color: var(--text-muted); }
   </style>
 </head>
 <body>
@@ -936,6 +983,7 @@
   <nav aria-label="Navegação Principal">
     <button class="tab-btn active" onclick="switchTab('studio')" id="tab-btn-studio">⚡ Estúdio de Publicação</button>
     <button class="tab-btn" onclick="switchTab('channel')" id="tab-btn-channel">📺 Transmissões do Canal</button>
+    <button class="tab-btn" onclick="switchTab('batch')" id="tab-btn-batch">📥 Downloads em Lote<span id="bt-tab-badge"></span></button>
     <button class="tab-btn" onclick="switchTab('episodes')" id="tab-btn-episodes">🎧 Episódios Publicados (<span id="episodes-count">0</span>)</button>
     <button class="tab-btn" onclick="switchTab('settings')" id="tab-btn-settings">⚙️ Configurações & Diagnóstico</button>
   </nav>
@@ -1394,6 +1442,158 @@
         <div style="padding: 2rem; text-align: center; color: var(--text-muted); grid-column: 1 / -1;">
           Carregando transmissões recentes do canal...
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB: DOWNLOADS EM LOTE -->
+  <section id="tab-batch" class="tab-panel" aria-labelledby="batch-section-title">
+    <div class="card">
+      <div class="card-title" id="batch-section-title">
+        <span>📥 Downloads em Lote <span id="bt-channel-name" style="font-weight:500;color:var(--text-muted);font-size:0.85rem;"></span></span>
+        <button type="button" class="btn btn-outline btn-sm" onclick="btTogglePaste()">📋 Colar links</button>
+      </div>
+
+      <div class="bt-row">
+        <div class="bt-field" style="flex: 2 1 220px;">
+          <label for="bt-channel">Canal (@handle, URL ou ID)</label>
+          <input type="text" id="bt-channel" list="bt-channel-list" placeholder="@nucleodafelive" onkeydown="if(event.key==='Enter')btLoadChannel()">
+          <datalist id="bt-channel-list"></datalist>
+        </div>
+        <div class="bt-field">
+          <label for="bt-tab">Origem</label>
+          <select id="bt-tab">
+            <option value="streams">🔴 Transmissões ao vivo</option>
+            <option value="videos">🎬 Vídeos</option>
+            <option value="shorts">📱 Shorts</option>
+            <option value="all">Tudo (lives + vídeos)</option>
+          </select>
+        </div>
+        <div class="bt-field">
+          <label for="bt-limit">Quantidade</label>
+          <select id="bt-limit">
+            <option>30</option><option selected>60</option><option>120</option><option>300</option><option value="1000">Todos (até 1000)</option>
+          </select>
+        </div>
+        <button type="button" class="btn btn-primary" id="bt-load-btn" onclick="btLoadChannel()">🔎 Buscar vídeos</button>
+      </div>
+
+      <div id="bt-paste-box" style="display:none; margin-top:0.75rem;">
+        <textarea id="bt-paste" class="bt-paste" placeholder="Cole links de vídeos ou playlists (um por linha). Eles entram na lista abaixo."></textarea>
+        <button type="button" class="btn btn-outline btn-sm" style="margin-top:0.4rem;" id="bt-paste-btn" onclick="btLookupPasted()">➕ Adicionar à lista</button>
+      </div>
+
+      <div class="bt-row" style="margin-top: 0.85rem;">
+        <div class="bt-field" style="flex: 2 1 260px;">
+          <label for="bt-mask">Máscara no título</label>
+          <input type="text" id="bt-mask" placeholder="ex.: *Paulo* , culto -jovem   |   /regex/" oninput="btRender()">
+        </div>
+        <div class="bt-field">
+          <label for="bt-group">Pregador / evento</label>
+          <select id="bt-group" onchange="btRender()"><option value="">Todos</option></select>
+        </div>
+        <div class="bt-field"><label for="bt-from">De</label><input type="date" id="bt-from" onchange="btRender()"></div>
+        <div class="bt-field"><label for="bt-to">Até</label><input type="date" id="bt-to" onchange="btRender()"></div>
+        <div class="bt-field" style="width: 105px;"><label for="bt-mindur">Duração ≥ (min)</label><input type="number" id="bt-mindur" min="0" placeholder="0" oninput="btRender()"></div>
+      </div>
+      <div class="bt-row" style="margin-top: 0.5rem; gap: 1rem;">
+        <label class="bt-check"><input type="checkbox" id="bt-only-live" onchange="btRender()"> Somente transmissões ao vivo</label>
+        <label class="bt-check"><input type="checkbox" id="bt-hide-done" onchange="btRender()"> Ocultar já baixados</label>
+        <label class="bt-check"><input type="checkbox" id="bt-hide-unavail" checked onchange="btRender()"> Ocultar ao vivo agora / agendados</label>
+        <span class="bt-spacer"></span>
+        <span class="bt-stats" id="bt-count"></span>
+      </div>
+
+      <div class="bt-bar">
+        <button type="button" class="btn btn-outline btn-xs" onclick="btSelectVisible(true)">☑ Selecionar visíveis</button>
+        <button type="button" class="btn btn-outline btn-xs" onclick="btSelectVisible(false)">☐ Limpar</button>
+        <button type="button" class="btn btn-outline btn-xs" onclick="btInvertVisible()">⇄ Inverter</button>
+        <span class="bt-spacer"></span>
+        <strong>Aplicar aos selecionados:</strong>
+        <select id="bt-bulk-quality" aria-label="Qualidade"></select>
+        <select id="bt-bulk-mode" aria-label="Mídia"></select>
+        <label class="bt-check"><input type="checkbox" id="bt-bulk-cover" checked> Capa 1:1</label>
+        <label class="bt-check"><input type="checkbox" id="bt-bulk-thumb" checked> Foto 16:9</label>
+        <button type="button" class="btn btn-outline btn-xs" onclick="btApplyBulk()">Aplicar</button>
+      </div>
+
+      <div class="bt-table-wrap">
+        <table class="bt-table">
+          <thead>
+            <tr>
+              <th><input type="checkbox" id="bt-check-all" aria-label="Selecionar todos visíveis" onchange="btSelectVisible(this.checked)"></th>
+              <th></th>
+              <th class="sortable" onclick="btSort('title')">Título <span id="bt-sort-title"></span></th>
+              <th class="sortable" onclick="btSort('date')">Data <span id="bt-sort-date"></span></th>
+              <th class="sortable" onclick="btSort('duration')">Duração <span id="bt-sort-duration"></span></th>
+              <th>Pasta de destino (editável)</th>
+              <th>Qualidade</th>
+              <th>Mídia</th>
+              <th title="Capa quadrada 1:1">1:1</th>
+              <th title="Foto do tema 16:9">16:9</th>
+            </tr>
+          </thead>
+          <tbody id="bt-tbody"><tr><td colspan="10" class="bt-empty">Clique em “Buscar vídeos” para listar o canal.</td></tr></tbody>
+        </table>
+      </div>
+
+      <details style="margin-top: 0.75rem;">
+        <summary style="cursor:pointer; font-size:0.85rem; font-weight:600;">⚙️ Destino, nomes de pasta e velocidade</summary>
+        <div class="bt-settings">
+          <div class="bt-field">
+            <label for="bt-outdir">Pasta base de destino</label>
+            <input type="text" id="bt-outdir" onchange="btSaveSettings()">
+          </div>
+          <div class="bt-field">
+            <label for="bt-template">Modelo de subpastas</label>
+            <input type="text" id="bt-template" oninput="btTemplateChanged()" onchange="btSaveSettings()">
+            <div class="bt-tokens">Clique para inserir:
+              <code onclick="btInsertToken('{grupo}')">{grupo}</code> pregador ou evento,
+              <code onclick="btInsertToken('{pregador}')">{pregador}</code>, <code onclick="btInsertToken('{evento}')">{evento}</code>,
+              <code onclick="btInsertToken('{palavra}')">{palavra}</code>, <code onclick="btInsertToken('{data}')">{data}</code>,
+              <code onclick="btInsertToken('{ano}')">{ano}</code>, <code onclick="btInsertToken('{mes}')">{mes}</code>,
+              <code onclick="btInsertToken('{titulo}')">{titulo}</code>. Use “/” para criar níveis.
+            </div>
+          </div>
+          <div class="bt-field">
+            <label for="bt-concurrency">Downloads simultâneos</label>
+            <select id="bt-concurrency" onchange="btSaveSettings()"></select>
+            <div class="bt-tokens">Sugerido: <strong>2</strong>. Acima de 3 o YouTube pode limitar (erro 429); se isso ocorrer a fila pausa sozinha por 3 min e tenta de novo.</div>
+          </div>
+          <div class="bt-field">
+            <label for="bt-limitrate">Limite de banda por download</label>
+            <input type="text" id="bt-limitrate" placeholder="sem limite (ex.: 5M, 800K)" onchange="btSaveSettings()">
+          </div>
+          <div class="bt-field" style="justify-content:center; gap:0.4rem;">
+            <label class="bt-check"><input type="checkbox" id="bt-skip-done" onchange="btSaveSettings()"> Não enfileirar o que já foi baixado</label>
+            <label class="bt-check"><input type="checkbox" id="bt-keep-cache" onchange="btSaveSettings()"> Manter stream bruto em cache</label>
+          </div>
+        </div>
+      </details>
+
+      <div class="bt-foot">
+        <div class="bt-stats" id="bt-sel-stats">Nenhum vídeo selecionado.</div>
+        <button type="button" class="btn btn-success" id="bt-enqueue-btn" onclick="btEnqueue()" disabled>⬇️ Enfileirar selecionados</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <span>Fila de downloads <span class="bt-stats" id="bt-queue-stats"></span></span>
+        <div class="mini-actions">
+          <button type="button" class="btn btn-outline btn-xs" id="bt-pause-btn" onclick="btPauseToggle()">⏸ Pausar fila</button>
+          <button type="button" class="btn btn-outline btn-xs" onclick="btControl('retry_failed')">↻ Repetir falhas</button>
+          <button type="button" class="btn btn-outline btn-xs" onclick="btControl('clear_done')">🧹 Limpar concluídos</button>
+          <button type="button" class="btn btn-outline btn-xs" onclick="if(confirm('Cancelar todos os downloads da fila?'))btControl('cancel_all')">✖ Cancelar tudo</button>
+          <button type="button" class="btn btn-outline btn-xs" onclick="btOpenFolder('')">📂 Abrir pasta</button>
+        </div>
+      </div>
+      <div id="bt-banner"></div>
+      <div class="bt-table-wrap" style="max-height: 50vh;">
+        <table class="bt-table">
+          <thead><tr><th>#</th><th>Vídeo / destino</th><th>Itens</th><th style="min-width:180px;">Progresso</th><th>Velocidade</th><th>Restante</th><th>Ações</th></tr></thead>
+          <tbody id="bt-queue"><tr><td colspan="7" class="bt-empty">A fila está vazia.</td></tr></tbody>
+        </table>
       </div>
     </div>
   </section>
@@ -1889,6 +2089,7 @@
     $('tab-btn-' + tabId)?.classList.add('active');
     if (tabId === 'channel' && !Object.keys(channelVideosMap).length) loadChannelVideos();
     else if (tabId === 'episodes') loadFeedEpisodes();
+    else if (tabId === 'batch') { if (!btVideos.length) btLoadChannel(); btPollQueue(); }
   }
 
   // ---------------------------------------------------------------------
@@ -3680,6 +3881,398 @@ Contato: (61) 3386-2122`;
   // Guarda o rascunho ao sair da página
   window.addEventListener('beforeunload', saveDraftNow);
 
+
+  // ---------------------------------------------------------------------
+  //  Downloads em Lote
+  // ---------------------------------------------------------------------
+  const BT_QUALITIES = [['360', '360p'], ['480', '480p'], ['720', '720p HD'], ['1080', '1080p Full HD'], ['1440', '1440p (lento)'], ['2160', '4K (lento)']];
+  const BT_MODES = [['video', '🎬 Vídeo'], ['audio', '🎧 Áudio'], ['both', '🎬+🎧 Ambos'], ['none', '🖼 Só imagens']];
+  const BT_MB_PER_MIN = { '360': 5, '480': 8, '720': 13, '1080': 24, '1440': 45, '2160': 90 }; // estimativa grosseira
+  const BT_LS = 'podcastnf.batch.ui';
+  let btVideos = [];            // linhas vindas do servidor
+  let btOpts = {};              // id -> { sel, quality, mode, cover, thumb, folder, edited }
+  let btSettings = null;
+  let btSortKey = 'date', btSortDir = -1;
+  let btPollTimer = null, btWasBusy = false, btLastSnapshot = null;
+
+  async function btJson(res) {
+    const txt = await res.text();
+    try { return JSON.parse(txt); } catch (e) {
+      if (res.status === 404) throw new Error('O servidor em execução é uma versão antiga e não conhece os Downloads em Lote. Reinicie o studio.sh (Ctrl+C e rode de novo).');
+      throw new Error(`Resposta inesperada do servidor (HTTP ${res.status}).`);
+    }
+  }
+
+  function btPrefs() { return lsGet(BT_LS, {}); }
+  function btSavePrefs() {
+    lsSet(BT_LS, {
+      channel: $('bt-channel').value.trim(), tab: $('bt-tab').value, limit: $('bt-limit').value,
+      mask: $('bt-mask').value, onlyLive: $('bt-only-live').checked, hideDone: $('bt-hide-done').checked,
+      hideUnavail: $('bt-hide-unavail').checked, mindur: $('bt-mindur').value,
+      bulkQuality: $('bt-bulk-quality').value, bulkMode: $('bt-bulk-mode').value,
+      bulkCover: $('bt-bulk-cover').checked, bulkThumb: $('bt-bulk-thumb').checked,
+      channels: btPrefs().channels || [],
+    });
+  }
+
+  function btInit() {
+    const fill = (sel, opts, val) => { sel.innerHTML = opts.map(([v, l]) => `<option value="${v}">${l}</option>`).join(''); if (val) sel.value = val; };
+    const p = btPrefs();
+    fill($('bt-bulk-quality'), BT_QUALITIES, p.bulkQuality || '720');
+    fill($('bt-bulk-mode'), BT_MODES, p.bulkMode || 'video');
+    $('bt-concurrency').innerHTML = [1, 2, 3, 4, 5, 6].map(n => `<option value="${n}">${n}${n === 2 ? ' (sugerido)' : n >= 4 ? ' (arriscado)' : ''}</option>`).join('');
+    $('bt-channel').value = p.channel || '@nucleodafelive';
+    $('bt-tab').value = p.tab || 'streams';
+    $('bt-limit').value = p.limit || '60';
+    $('bt-mask').value = p.mask || '';
+    $('bt-only-live').checked = !!p.onlyLive;
+    $('bt-hide-done').checked = !!p.hideDone;
+    $('bt-hide-unavail').checked = p.hideUnavail !== false;
+    $('bt-mindur').value = p.mindur || '';
+    if (p.bulkCover === false) $('bt-bulk-cover').checked = false;
+    if (p.bulkThumb === false) $('bt-bulk-thumb').checked = false;
+    $('bt-channel-list').innerHTML = ['@nucleodafelive', ...(p.channels || [])].filter((v, i, a) => a.indexOf(v) === i).map(c => `<option value="${escapeHtml(c)}">`).join('');
+    ['bt-tab', 'bt-limit', 'bt-only-live', 'bt-hide-done', 'bt-hide-unavail', 'bt-bulk-quality', 'bt-bulk-mode', 'bt-bulk-cover', 'bt-bulk-thumb'].forEach(id => $(id).addEventListener('change', btSavePrefs));
+    $('bt-mask').addEventListener('input', debounce(btSavePrefs, 400));
+    btPollQueue();
+  }
+
+  function btFmtDur(s) {
+    if (!s) return '—';
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
+    return h ? `${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')}` : `${m}:${String(x).padStart(2, '0')}`;
+  }
+  function btFmtDate(d) { return d ? d.split('-').reverse().join('/') : '—'; }
+  function btNorm(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
+
+  // Máscara: vírgula = OU; espaço = E; -termo exclui; * e ? curingas; /regex/ para expressão regular.
+  function btMaskMatcher(mask) {
+    mask = (mask || '').trim();
+    if (!mask) return () => true;
+    const rx = mask.match(/^\/(.+)\/([a-z]*)$/);
+    if (rx) { try { const r = new RegExp(rx[1], rx[2] || 'i'); return t => r.test(t); } catch (e) { return () => true; } }
+    const groups = mask.split(',').map(g => g.trim()).filter(Boolean).map(g => g.split(/\s+/).map(term => {
+      const neg = term.startsWith('-') && term.length > 1;
+      const body = btNorm(neg ? term.slice(1) : term).replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
+      return { neg, re: new RegExp(body) };
+    }));
+    return t => { const n = btNorm(t); return groups.some(g => g.every(({ neg, re }) => re.test(n) !== neg)); };
+  }
+
+  function btSafeSeg(s) {
+    s = String(s).replace(/[\\/*?:"<>|\x00-\x1f]+/g, ' - ').replace(/\s+/g, ' ').replace(/(?:\s+-+\s*|\s*-+\s+|-{2,})+/g, ' - ');
+    return s.replace(/^[\s.-]+|[\s.-]+$/g, '').slice(0, 120) || 'Sem nome';
+  }
+  function btRenderFolder(v, tpl) {
+    const p = v.parsed || {}, d = p.data || '';
+    const vals = { grupo: p.grupo || 'Outros', pregador: p.pregador || p.evento || 'Outros', evento: p.evento || p.grupo || 'Outros',
+      palavra: p.palavra || v.title, data: d || 'sem-data', ano: d.slice(0, 4) || 'sem-ano', mes: d.slice(0, 7) || 'sem-mes', titulo: v.title, id: v.id };
+    const rel = (tpl || '{grupo}/{data} - {palavra}').replace(/\{(\w+)\}/g, (m, k) => (k in vals ? vals[k] : m));
+    return rel.split(/[\\/]+/).map(x => x.trim()).filter(x => x && x !== '.' && x !== '..').map(btSafeSeg).join('/');
+  }
+
+  function btOpt(v) {
+    if (!btOpts[v.id]) {
+      btOpts[v.id] = { sel: false, quality: $('bt-bulk-quality').value, mode: $('bt-bulk-mode').value,
+        cover: $('bt-bulk-cover').checked, thumb: $('bt-bulk-thumb').checked, folder: btRenderFolder(v, $('bt-template').value), edited: false };
+    }
+    return btOpts[v.id];
+  }
+
+  async function btLoadChannel() {
+    const btn = $('bt-load-btn');
+    const channel = $('bt-channel').value.trim() || '@nucleodafelive';
+    btnBusy(btn, 'Buscando...');
+    $('bt-tbody').innerHTML = `<tr><td colspan="10" class="bt-empty">Lendo o canal no YouTube... isso leva de 5 a 30 s conforme a quantidade.</td></tr>`;
+    try {
+      const qs = new URLSearchParams({ channel, tab: $('bt-tab').value, limit: $('bt-limit').value });
+      const res = await fetch('/api/batch/channel?' + qs);
+      const data = await btJson(res);
+      if (!res.ok || data.error) throw new Error(data.error || 'Falha ao listar o canal');
+      btVideos = data.videos || [];
+      $('bt-channel-name').textContent = data.channel?.name ? `• ${data.channel.name}${data.channel.handle ? ' (' + data.channel.handle + ')' : ''}` : '';
+      const p = btPrefs();
+      p.channels = [channel, ...(p.channels || []).filter(c => c !== channel)].slice(0, 8);
+      lsSet(BT_LS, p); btSavePrefs();
+      btFillGroups();
+      btRender();
+      showToast(`${btVideos.length} vídeos carregados.`);
+    } catch (e) {
+      $('bt-tbody').innerHTML = `<tr><td colspan="10" class="bt-empty" style="color:var(--danger)">${escapeHtml(e.message)}</td></tr>`;
+      showToast(e.message, true);
+    } finally { btnReset(btn); }
+  }
+
+  function btTogglePaste() { const b = $('bt-paste-box'); b.style.display = b.style.display === 'none' ? 'block' : 'none'; }
+
+  async function btLookupPasted() {
+    const text = $('bt-paste').value.trim();
+    if (!text) return;
+    const btn = $('bt-paste-btn');
+    btnBusy(btn, 'Resolvendo links...');
+    try {
+      const res = await fetch('/api/batch/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+      const data = await btJson(res);
+      if (!res.ok || data.error) throw new Error(data.error || 'Falha');
+      const known = new Set(btVideos.map(v => v.id));
+      const fresh = (data.videos || []).filter(v => !known.has(v.id));
+      btVideos = [...fresh, ...btVideos];
+      fresh.forEach(v => { btOpt(v).sel = true; });
+      $('bt-paste').value = '';
+      btFillGroups(); btRender();
+      showToast(`${fresh.length} vídeo(s) adicionados e selecionados.`);
+    } catch (e) { showToast(e.message, true); } finally { btnReset(btn); }
+  }
+
+  function btFillGroups() {
+    const sel = $('bt-group'), cur = sel.value;
+    const counts = {};
+    btVideos.forEach(v => { const g = v.parsed?.grupo || 'Outros'; counts[g] = (counts[g] || 0) + 1; });
+    sel.innerHTML = '<option value="">Todos</option>' + Object.keys(counts).sort((a, b) => counts[b] - counts[a])
+      .map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)} (${counts[g]})</option>`).join('');
+    sel.value = counts[cur] ? cur : '';
+  }
+
+  function btVisible() {
+    const match = btMaskMatcher($('bt-mask').value);
+    const group = $('bt-group').value, from = $('bt-from').value, to = $('bt-to').value;
+    const minDur = (parseFloat($('bt-mindur').value) || 0) * 60;
+    const onlyLive = $('bt-only-live').checked, hideDone = $('bt-hide-done').checked, hideUnavail = $('bt-hide-unavail').checked;
+    const list = btVideos.filter(v => match(v.title)
+      && (!group || (v.parsed?.grupo || 'Outros') === group)
+      && (!from || (v.date && v.date >= from)) && (!to || (v.date && v.date <= to))
+      && (!minDur || v.duration >= minDur)
+      && (!onlyLive || v.is_live_stream)
+      && (!hideDone || !v.downloaded)
+      && (!hideUnavail || v.available));
+    const k = btSortKey;
+    return list.sort((a, b) => {
+      const x = k === 'title' ? btNorm(a.title) : k === 'duration' ? a.duration : (a.timestamp || 0);
+      const y = k === 'title' ? btNorm(b.title) : k === 'duration' ? b.duration : (b.timestamp || 0);
+      return (x > y ? 1 : x < y ? -1 : 0) * btSortDir;
+    });
+  }
+
+  function btSort(key) {
+    btSortDir = btSortKey === key ? -btSortDir : (key === 'title' ? 1 : -1);
+    btSortKey = key;
+    btRender();
+  }
+
+  function btRender() {
+    const rows = btVisible();
+    ['title', 'date', 'duration'].forEach(k => { $('bt-sort-' + k).textContent = btSortKey === k ? (btSortDir > 0 ? '▲' : '▼') : ''; });
+    $('bt-count').textContent = btVideos.length ? `${rows.length} de ${btVideos.length} vídeos` : '';
+    if (!btVideos.length) { btUpdateSelStats(); return; }
+    if (!rows.length) {
+      $('bt-tbody').innerHTML = `<tr><td colspan="10" class="bt-empty">Nenhum vídeo corresponde aos filtros.</td></tr>`;
+      btUpdateSelStats(); return;
+    }
+    const opt = (list, val) => list.map(([v, l]) => `<option value="${v}"${v === val ? ' selected' : ''}>${l}</option>`).join('');
+    $('bt-tbody').innerHTML = rows.map(v => {
+      const o = btOpt(v);
+      const tags = [];
+      if (v.live_status === 'is_live') tags.push('<span class="bt-tag live">AO VIVO AGORA</span>');
+      else if (v.live_status === 'is_upcoming') tags.push('<span class="bt-tag warn">AGENDADO</span>');
+      else if (v.is_live_stream) tags.push('<span class="bt-tag">🔴 live</span>');
+      if (v.downloaded) tags.push(`<span class="bt-tag ok" title="${escapeHtml(v.downloaded.folder || '')}">✓ já baixado</span>`);
+      if (v.parsed?.pregador) tags.push(`<span class="bt-tag">${escapeHtml(v.parsed.pregador)}</span>`);
+      if (v.views != null) tags.push(`<span>${Number(v.views).toLocaleString('pt-BR')} visualizações</span>`);
+      const dis = v.available ? '' : ' disabled';
+      return `<tr class="${o.sel ? 'sel' : ''}${v.downloaded ? ' done-row' : ''}" data-id="${v.id}">
+        <td><input type="checkbox"${o.sel ? ' checked' : ''}${dis} onchange="btSet('${v.id}','sel',this.checked)" aria-label="Selecionar"></td>
+        <td><img class="bt-thumb" loading="lazy" src="${v.thumbnail}" alt=""></td>
+        <td><div class="bt-title"><a href="https://www.youtube.com/watch?v=${v.id}" target="_blank" rel="noopener">${escapeHtml(v.title)}</a></div><div class="bt-sub">${tags.join('')}</div></td>
+        <td style="white-space:nowrap">${btFmtDate(v.date)}</td>
+        <td style="white-space:nowrap">${btFmtDur(v.duration)}</td>
+        <td><div class="bt-folder"><input type="text" class="${o.edited ? 'edited' : ''}" value="${escapeHtml(o.folder)}" onchange="btSetFolder('${v.id}',this.value)" title="Subpasta dentro da pasta base">
+          ${o.edited ? `<button type="button" class="btn btn-outline btn-xs" title="Voltar ao automático" onclick="btResetFolder('${v.id}')">↺</button>` : ''}</div></td>
+        <td><select onchange="btSet('${v.id}','quality',this.value)"${o.mode === 'audio' || o.mode === 'none' ? ' disabled' : ''}>${opt(BT_QUALITIES, o.quality)}</select></td>
+        <td><select onchange="btSet('${v.id}','mode',this.value)">${opt(BT_MODES, o.mode)}</select></td>
+        <td><input type="checkbox"${o.cover ? ' checked' : ''} onchange="btSet('${v.id}','cover',this.checked)" aria-label="Capa 1:1"></td>
+        <td><input type="checkbox"${o.thumb ? ' checked' : ''} onchange="btSet('${v.id}','thumb',this.checked)" aria-label="Foto 16:9"></td>
+      </tr>`;
+    }).join('');
+    $('bt-check-all').checked = rows.every(v => btOpt(v).sel || !v.available);
+    btUpdateSelStats();
+  }
+
+  function btSet(id, key, val) {
+    const v = btVideos.find(x => x.id === id);
+    if (!v) return;
+    btOpt(v)[key] = val;
+    if (key === 'sel' || key === 'mode') btRender(); else btUpdateSelStats();
+  }
+  function btSetFolder(id, val) { const v = btVideos.find(x => x.id === id); const o = btOpt(v); o.folder = val.trim(); o.edited = true; btRender(); }
+  function btResetFolder(id) { const v = btVideos.find(x => x.id === id); const o = btOpt(v); o.folder = btRenderFolder(v, $('bt-template').value); o.edited = false; btRender(); }
+
+  function btSelectVisible(on) { btVisible().forEach(v => { if (v.available) btOpt(v).sel = on; }); btRender(); }
+  function btInvertVisible() { btVisible().forEach(v => { if (v.available) { const o = btOpt(v); o.sel = !o.sel; } }); btRender(); }
+
+  function btApplyBulk() {
+    const q = $('bt-bulk-quality').value, m = $('bt-bulk-mode').value, c = $('bt-bulk-cover').checked, t = $('bt-bulk-thumb').checked;
+    let n = 0;
+    btVideos.forEach(v => { const o = btOpt(v); if (o.sel) { Object.assign(o, { quality: q, mode: m, cover: c, thumb: t }); n++; } });
+    btRender();
+    showToast(n ? `Opções aplicadas a ${n} vídeo(s).` : 'Selecione vídeos primeiro.', !n);
+  }
+
+  function btSelected() { return btVideos.filter(v => btOpts[v.id]?.sel && v.available); }
+
+  function btUpdateSelStats() {
+    const sel = btSelected();
+    $('bt-enqueue-btn').disabled = !sel.length;
+    $('bt-enqueue-btn').textContent = sel.length ? `⬇️ Enfileirar ${sel.length} selecionado(s)` : '⬇️ Enfileirar selecionados';
+    if (!sel.length) { $('bt-sel-stats').textContent = 'Nenhum vídeo selecionado.'; return; }
+    let secs = 0, mb = 0;
+    sel.forEach(v => {
+      const o = btOpts[v.id], min = (v.duration || 0) / 60;
+      secs += v.duration || 0;
+      if (o.mode === 'video' || o.mode === 'both') mb += min * (BT_MB_PER_MIN[o.quality] || 13);
+      if (o.mode === 'audio' || o.mode === 'both') mb += min * 1;
+    });
+    const size = mb > 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
+    const already = sel.filter(v => v.downloaded).length;
+    $('bt-sel-stats').innerHTML = `<strong>${sel.length}</strong> selecionado(s) • <strong>${btFmtDur(secs)}</strong> de conteúdo • ~<strong>${size}</strong> estimados`
+      + (already ? ` • <span style="color:var(--warning)">${already} já baixado(s)${btSettings?.skip_downloaded ? ' serão ignorados' : ' serão baixados de novo'}</span>` : '');
+  }
+
+  async function btEnqueue() {
+    let sel = btSelected();
+    if (btSettings?.skip_downloaded) sel = sel.filter(v => !v.downloaded);
+    if (!sel.length) { showToast('Nada para enfileirar (os selecionados já foram baixados).', true); return; }
+    const items = sel.map(v => { const o = btOpts[v.id]; return { video_id: v.id, title: v.title, folder: o.folder, quality: o.quality, mode: o.mode, cover: o.cover, thumb: o.thumb, duration: v.duration }; });
+    try {
+      const res = await fetch('/api/batch/enqueue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
+      const data = await btJson(res);
+      if (!res.ok || data.error) throw new Error(data.error || 'Falha ao enfileirar');
+      sel.forEach(v => { btOpts[v.id].sel = false; });
+      btRender();
+      showToast(`${data.added} vídeo(s) na fila${data.skipped?.length ? ` • ${data.skipped.length} já estavam na fila` : ''}.`);
+      if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+      btPollQueue();
+    } catch (e) { showToast(e.message, true); }
+  }
+
+  // ----- configurações -----
+  function btApplySettingsToForm(s) {
+    btSettings = s;
+    const active = document.activeElement;
+    if (active !== $('bt-outdir')) $('bt-outdir').value = s.output_dir || '';
+    if (active !== $('bt-template')) $('bt-template').value = s.folder_template || '';
+    if (active !== $('bt-limitrate')) $('bt-limitrate').value = s.limit_rate || '';
+    $('bt-concurrency').value = String(s.concurrency || 2);
+    $('bt-skip-done').checked = !!s.skip_downloaded;
+    $('bt-keep-cache').checked = !!s.keep_cache;
+  }
+  async function btSaveSettings() {
+    const body = { output_dir: $('bt-outdir').value, folder_template: $('bt-template').value, concurrency: +$('bt-concurrency').value,
+      limit_rate: $('bt-limitrate').value, skip_downloaded: $('bt-skip-done').checked, keep_cache: $('bt-keep-cache').checked };
+    try {
+      const res = await fetch('/api/batch/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const data = await btJson(res);
+      if (!res.ok || data.error) throw new Error(data.error || 'Falha ao salvar');
+      btApplySettingsToForm(data);
+      btUpdateSelStats();
+      showToast('Configurações do lote salvas.');
+    } catch (e) { showToast(e.message, true); }
+  }
+  const btTemplateChanged = debounce(() => {
+    const tpl = $('bt-template').value;
+    btVideos.forEach(v => { const o = btOpts[v.id]; if (o && !o.edited) o.folder = btRenderFolder(v, tpl); });
+    btRender();
+  }, 250);
+  function btInsertToken(tok) {
+    const el = $('bt-template'), s = el.selectionStart ?? el.value.length;
+    el.value = el.value.slice(0, s) + tok + el.value.slice(el.selectionEnd ?? s);
+    el.focus(); btTemplateChanged(); btSaveSettings();
+  }
+
+  // ----- fila -----
+  async function btControl(action, jobId, extra) {
+    try {
+      const res = await fetch('/api/batch/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, job_id: jobId, extra }) });
+      const data = await btJson(res);
+      if (!res.ok || data.error) throw new Error(data.error || 'Falha');
+      btRenderQueue(data);
+    } catch (e) { showToast(e.message, true); }
+  }
+  function btPauseToggle() { btControl(btLastSnapshot?.paused ? 'resume' : 'pause'); }
+  async function btOpenFolder(folder) {
+    try { await fetch('/api/batch/open-folder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folder }) }); } catch (e) {}
+  }
+
+  async function btPollQueue() {
+    clearTimeout(btPollTimer);
+    let busy = false;
+    try {
+      const res = await fetch('/api/batch/state');
+      const data = await btJson(res);
+      btRenderQueue(data);
+      busy = !!(data.counts?.running || data.counts?.waiting || data.counts?.queued);
+    } catch (e) {}
+    const visible = $('tab-batch')?.classList.contains('active');
+    btPollTimer = setTimeout(btPollQueue, busy ? (visible ? 1000 : 3000) : 8000);
+  }
+
+  function btRenderQueue(s) {
+    btLastSnapshot = s;
+    if (!btSettings || JSON.stringify(btSettings) !== JSON.stringify(s.settings)) btApplySettingsToForm(s.settings);
+    const c = s.counts || {};
+    const busy = (c.running || 0) + (c.queued || 0);
+    $('bt-queue-stats').textContent = s.jobs.length
+      ? `• ${c.running || 0} baixando • ${c.queued || 0} na fila • ${c.done || 0} concluídos${c.error ? ` • ${c.error} com erro` : ''}` : '';
+    $('bt-pause-btn').textContent = s.paused ? '▶️ Retomar fila' : '⏸ Pausar fila';
+    const tabBadge = $('bt-tab-badge');
+    if (tabBadge) tabBadge.textContent = busy ? ` (${busy})` : '';
+    let banner = '';
+    if (s.cooldown_left > 0) banner = `<div class="bt-banner">⏳ O YouTube pediu calma (limite de requisições). Fila pausada automaticamente por mais ${s.cooldown_left}s. <button class="btn btn-outline btn-xs" onclick="btControl('resume')">Retomar já</button></div>`;
+    else if (s.paused) banner = `<div class="bt-banner">⏸ Fila pausada. Os downloads em andamento continuam; novos não serão iniciados.</div>`;
+    $('bt-banner').innerHTML = banner;
+
+    if (btWasBusy && !busy && s.jobs.length) {
+      const msg = `Lote concluído: ${c.done || 0} ok${c.error ? `, ${c.error} com erro` : ''}.`;
+      showToast(msg, !!c.error);
+      if ('Notification' in window && Notification.permission === 'granted') new Notification('Podcast Studio', { body: msg });
+      if (btVideos.length) btRefreshDownloadedFlags(s.jobs);
+    }
+    btWasBusy = busy > 0;
+
+    if (!s.jobs.length) { $('bt-queue').innerHTML = '<tr><td colspan="7" class="bt-empty">A fila está vazia.</td></tr>'; return; }
+    const STATUS = { queued: 'Na fila', running: 'Baixando', waiting: 'Aguardando', done: 'Concluído', error: 'Erro', cancelled: 'Cancelado' };
+    const MODE = { video: '🎬', audio: '🎧', both: '🎬🎧', none: '' };
+    $('bt-queue').innerHTML = s.jobs.map((j, i) => {
+      const cls = j.status === 'done' ? 'done' : j.status === 'error' ? 'err' : '';
+      const items = `${MODE[j.mode] || ''}${j.mode === 'video' || j.mode === 'both' ? ' ' + j.quality + 'p' : ''}${j.cover ? ' • 1:1' : ''}${j.thumb ? ' • 16:9' : ''}`;
+      const acts = [];
+      if (j.status === 'queued') acts.push(`<button class="btn btn-outline" title="Mover para o topo" onclick="btControl('top','${j.id}')">⤒</button>`);
+      if (j.status === 'running' || j.status === 'queued' || j.status === 'waiting') acts.push(`<button class="btn btn-outline" title="Cancelar" onclick="btControl('cancel','${j.id}')">✖</button>`);
+      if (j.status === 'error' || j.status === 'cancelled') acts.push(`<button class="btn btn-outline" title="Tentar de novo" onclick="btControl('retry','${j.id}')">↻</button>`);
+      if (j.status === 'done') acts.push(`<button class="btn btn-outline" title="Abrir pasta" onclick="btOpenFolder(${escapeHtml(JSON.stringify(j.folder))})">📂</button>`);
+      if (j.status !== 'running' && j.status !== 'waiting') acts.push(`<button class="btn btn-outline" title="Remover da lista" onclick="btControl('remove','${j.id}')">🗑</button>`);
+      const msg = j.status === 'error' ? (j.error || j.message) : j.message;
+      return `<tr>
+        <td>${i + 1}</td>
+        <td><div class="bt-title">${escapeHtml(j.title)}</div><div class="bt-job-msg" title="${escapeHtml(j.folder)}">📁 ${escapeHtml(j.folder || '(pasta base)')}</div></td>
+        <td style="white-space:nowrap;font-size:0.75rem">${items}</td>
+        <td><div class="bt-progress ${cls}"><div style="width:${j.status === 'done' ? 100 : j.progress || 0}%"></div></div>
+          <div class="bt-job-msg" title="${escapeHtml(msg || '')}"><strong>${STATUS[j.status] || j.status}</strong>${j.status === 'running' ? ` ${j.progress || 0}%` : ''} • ${escapeHtml(msg || '')}</div></td>
+        <td style="white-space:nowrap;font-size:0.75rem">${escapeHtml(j.speed || '—')}</td>
+        <td style="white-space:nowrap;font-size:0.75rem">${escapeHtml(j.eta || '—')}</td>
+        <td><div class="bt-actions">${acts.join('')}</div></td>
+      </tr>`;
+    }).join('');
+  }
+
+  function btRefreshDownloadedFlags(jobs) {
+    let changed = false;
+    jobs.filter(j => j.status === 'done').forEach(j => {
+      const v = btVideos.find(x => x.id === j.video_id);
+      if (v && !v.downloaded) { v.downloaded = { folder: j.folder, files: j.files }; changed = true; }
+    });
+    if (changed) btRender();
+  }
+
   // ---------------------------------------------------------------------
   //  Inicialização
   // ---------------------------------------------------------------------
@@ -3690,6 +4283,7 @@ Contato: (61) 3386-2122`;
   loadChannelVideos();
   testR2Connection(false);
   resumeRunningTasks();
+  btInit();
 </script>
 </body>
 </html>

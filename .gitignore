@@ -8,3 +8,7 @@ cookies.txt
 .spotify_profile/
 exports/
 server.log
+batch_settings.json
+batch_queue.json
+batch_history.json
+*.json.tmp

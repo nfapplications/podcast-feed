@@ -44,6 +44,7 @@ from processar_podcast import (
     video_details,
     ytdlp_cmd,
 )
+import batch_downloader
 from spotify_uploader import (
     cancel_spotify_upload,
     confirm_login,
@@ -1118,6 +1119,26 @@ def download_youtube_thumbnail(video_id: str, dest_path: Path) -> Path:
     raise RuntimeError(f"Não foi possível baixar a thumbnail do YouTube para {video_id}")
 
 
+_BATCH: batch_downloader.BatchManager | None = None
+_BATCH_GUARD = threading.Lock()
+
+
+def get_batch() -> batch_downloader.BatchManager:
+    """Gerenciador da fila de downloads em lote (criado sob demanda)."""
+    global _BATCH
+    with _BATCH_GUARD:
+        if _BATCH is None:
+            _BATCH = batch_downloader.BatchManager({
+                "ensure_mp4": ensure_export_mp4,
+                "ensure_mp3": ensure_export_mp3,
+                "ensure_artwork": ensure_artwork,
+                "download_thumbnail": download_youtube_thumbnail,
+                "exports_dir": get_exports_dir,
+                "download_filename": get_download_filename,
+            })
+        return _BATCH
+
+
 class StudioHandler(BaseHTTPRequestHandler):
     def end_headers(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -1266,6 +1287,26 @@ class StudioHandler(BaseHTTPRequestHandler):
                 self.send_json(videos)
             except Exception as exc:
                 self.send_json({"error": str(exc)}, status=500)
+            return
+
+        if path == "/api/batch/channel":
+            q = urllib.parse.parse_qs(parsed.query)
+            mgr = get_batch()
+            try:
+                data = batch_downloader.list_channel(
+                    ytdlp_cmd(),
+                    q.get("channel", [batch_downloader.DEFAULT_CHANNEL])[0],
+                    q.get("tab", ["streams"])[0],
+                    int(q.get("limit", ["60"])[0] or 60),
+                    mgr.settings, mgr.history,
+                )
+                self.send_json(data)
+            except Exception as exc:
+                self.send_json({"error": str(exc)}, status=500)
+            return
+
+        if path == "/api/batch/state":
+            self.send_json(get_batch().snapshot())
             return
 
         if path == "/api/config":
@@ -1609,6 +1650,52 @@ class StudioHandler(BaseHTTPRequestHandler):
                 "download_url": dl_url,
                 "filename": dl_name,
             })
+            return
+
+        if path.startswith("/api/batch/"):
+            mgr = get_batch()
+            try:
+                if path == "/api/batch/enqueue":
+                    if body.get("settings"):
+                        mgr.update_settings(body["settings"])
+                    self.send_json(mgr.enqueue(body.get("items") or []))
+                elif path == "/api/batch/control":
+                    mgr.control(str(body.get("action", "")), body.get("job_id"), body.get("extra"))
+                    self.send_json(mgr.snapshot())
+                elif path == "/api/batch/settings":
+                    self.send_json(mgr.update_settings(body))
+                elif path == "/api/batch/lookup":
+                    urls = [u for u in re.split(r"[\s,]+", str(body.get("text", ""))) if u]
+                    self.send_json({"videos": batch_downloader.lookup_urls(ytdlp_cmd(), urls, mgr.settings, mgr.history)})
+                elif path == "/api/batch/preview-folder":
+                    tpl = str(body.get("template") or mgr.settings["folder_template"])
+                    out = []
+                    for it in body.get("items") or []:
+                        title = str(it.get("title", ""))
+                        info = batch_downloader.parse_title(title, it.get("timestamp"))
+                        out.append(batch_downloader.render_folder(tpl, info, title, str(it.get("id", ""))))
+                    self.send_json({"folders": out})
+                elif path == "/api/batch/forget":
+                    mgr.forget_history(str(body.get("video_id", "")))
+                    self.send_json({"ok": True})
+                elif path == "/api/batch/open-folder":
+                    target = Path(mgr.settings["output_dir"]) / batch_downloader.safe_relpath(str(body.get("folder", "")))
+                    while not target.exists() and target != target.parent:
+                        target = target.parent
+                    if sys.platform == "darwin":
+                        subprocess.Popen(["open", str(target)])
+                    elif os.name == "nt":
+                        os.startfile(str(target))  # type: ignore[attr-defined]
+                    else:
+                        subprocess.Popen(["xdg-open", str(target)])
+                    self.send_json({"ok": True, "path": str(target)})
+                else:
+                    self.send_json({"error": "Rota de lote desconhecida."}, status=404)
+            except ValueError as exc:
+                self.send_json({"error": str(exc)}, status=400)
+            except Exception as exc:
+                LOG.exception("Erro na rota %s", path)
+                self.send_json({"error": str(exc)}, status=500)
             return
 
         if path == "/api/spotify-start-upload":
