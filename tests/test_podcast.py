@@ -131,6 +131,16 @@ class PodcastTests(unittest.TestCase):
         self.assertEqual(res_desc["end"], "01:35:00")
         self.assertEqual(res_desc["source"], "descricao_youtube")
 
+    def test_normalize_cut_bounds(self):
+        from server import normalize_cut_bounds
+        self.assertEqual(normalize_cut_bounds(None, None), (None, None))
+        self.assertEqual(normalize_cut_bounds("00:00:00", "00:00:00"), (None, None))
+        self.assertEqual(normalize_cut_bounds("00:00:00", None), (None, None))
+        self.assertEqual(normalize_cut_bounds(None, "00:00:00"), (None, None))
+        self.assertEqual(normalize_cut_bounds("01:00:00", "01:00:00"), (None, None))
+        self.assertEqual(normalize_cut_bounds("01:30:00", "01:00:00"), (None, None))
+        self.assertEqual(normalize_cut_bounds("00:30:00", "01:15:00"), (1800, 4500))
+
 
 if __name__ == "__main__":
     unittest.main()

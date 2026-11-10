@@ -238,6 +238,21 @@ def fetch_channel_videos(limit: int = 10) -> list[dict[str, Any]]:
     return results
 
 
+def normalize_cut_bounds(start_str: str | None, end_str: str | None) -> tuple[int | None, int | None]:
+    start_sec = seconds(start_str) if start_str and str(start_str).strip() else None
+    end_sec = seconds(end_str) if end_str and str(end_str).strip() else None
+
+    # Se ambos são None, 0 ou vazios: não há corte (vídeo completo)
+    if (start_sec is None or start_sec == 0) and (end_sec is None or end_sec == 0):
+        return None, None
+    if start_sec is not None and end_sec is not None and start_sec >= end_sec:
+        return None, None
+    # Se início é 0 ou ausente e fim não foi definido ou é 0
+    if (start_sec is None or start_sec == 0) and end_sec is None:
+        return None, None
+    return start_sec, end_sec
+
+
 def publish_worker(
     video_id: str,
     start_str: str | None,
@@ -255,14 +270,7 @@ def publish_worker(
         video_title = title_override.strip() if title_override and title_override.strip() else details.get("title", video_id)
         set_task("running", f"Vídeo identificado: {video_title}", 15, f"Título: {video_title} (Duração original: {int(details.get('duration', 0)) // 60} min)")
 
-        start_sec = seconds(start_str) if start_str and start_str.strip() else None
-        end_sec = seconds(end_str) if end_str and end_str.strip() else None
-        if start_sec == 0 and end_sec == 0:
-            start_sec = None
-            end_sec = None
-        if start_sec is not None and end_sec is not None and start_sec == end_sec:
-            start_sec = None
-            end_sec = None
+        start_sec, end_sec = normalize_cut_bounds(start_str, end_str)
         if (start_sec is not None) ^ (end_sec is not None):
             raise ValueError("Defina ambos início e fim para realizar o corte.")
         if start_sec is not None and end_sec is not None:
@@ -457,14 +465,7 @@ def spotify_upload_worker(
         mp4_path = exports_dir / f"{video_id}.mp4"
         art_path = exports_dir / f"{video_id}.jpg"
 
-        start_sec = seconds(start_str) if start_str and start_str.strip() else None
-        end_sec = seconds(end_str) if end_str and end_str.strip() else None
-        if start_sec == 0 and end_sec == 0:
-            start_sec = None
-            end_sec = None
-        if start_sec is not None and end_sec is not None and start_sec == end_sec:
-            start_sec = None
-            end_sec = None
+        start_sec, end_sec = normalize_cut_bounds(start_str, end_str)
 
         if not art_path.exists():
             set_spotify_state("preparing", "Gerando arte quadrada do episódio...", stage="artwork")
@@ -539,20 +540,7 @@ def manual_export_worker(
         mp4_path = exports_dir / f"{video_id}.mp4"
         art_path = exports_dir / f"{video_id}.jpg"
 
-        start_sec = seconds(start_str) if start_str and start_str.strip() else None
-        end_sec = seconds(end_str) if end_str and end_str.strip() else None
-        if start_sec == 0 and end_sec == 0:
-            start_sec = None
-            end_sec = None
-        if start_sec is not None and end_sec is not None and start_sec == end_sec:
-            start_sec = None
-            end_sec = None
-        if start_sec == 0 and end_sec == 0:
-            start_sec = None
-            end_sec = None
-        if start_sec is not None and end_sec is not None and start_sec == end_sec:
-            start_sec = None
-            end_sec = None
+        start_sec, end_sec = normalize_cut_bounds(start_str, end_str)
 
         is_cut = (start_sec is not None and end_sec is not None)
         enc_stage = "encoding" if is_cut else "packaging"

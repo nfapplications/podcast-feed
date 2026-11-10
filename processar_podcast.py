@@ -376,8 +376,12 @@ def encode_mp4(
     else:
         target_dur = 1.0
 
+    is_full_video = (start is None or start == 0) and (end is None or (total_dur > 0 and end >= int(total_dur) - 3))
+    if start is not None and end is not None and start >= end:
+        is_full_video = True
+
     # Quando não há corte, executa remux ultra rápido (-c copy) com +faststart em 2 segundos
-    if start is None and end is None:
+    if is_full_video:
         try:
             if progress_callback:
                 progress_callback(50.0, "Cópia direta", "00:02")

@@ -391,7 +391,7 @@
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 0.75rem;
-      margin-bottom: 1rem;
+      margin-bottom: 0.75rem;
     }
 
     .timestamp-box {
@@ -399,35 +399,214 @@
       border: 1px solid var(--input-border);
       border-radius: 8px;
       padding: 0.75rem;
+      position: relative;
     }
 
     .timestamp-box-title {
-      font-size: 0.75rem;
+      font-size: 0.72rem;
       font-weight: 700;
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      margin-bottom: 0.4rem;
     }
 
-    .timestamp-display {
-      font-size: 1.2rem;
-      font-weight: 700;
-      font-family: monospace;
+    .timestamp-input {
+      width: 100%;
+      background: var(--bg);
+      border: 1.5px solid var(--input-border);
+      border-radius: 6px;
       color: var(--primary);
-      margin-bottom: 0.4rem;
+      font-family: 'SF Mono', 'Fira Code', 'Roboto Mono', monospace;
+      font-size: 1.25rem;
+      font-weight: 700;
+      text-align: center;
+      letter-spacing: 1.5px;
+      padding: 0.4rem 0.5rem;
+      margin-bottom: 0.45rem;
+      transition: all 0.2s ease;
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+    }
+
+    .timestamp-input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25), inset 0 1px 3px rgba(0, 0, 0, 0.2);
+      color: #60a5fa;
+    }
+
+    .timestamp-input.end-input {
+      color: var(--success);
+    }
+
+    .timestamp-input.end-input:focus {
+      border-color: var(--success);
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25), inset 0 1px 3px rgba(0, 0, 0, 0.2);
+      color: #34d399;
+    }
+
+    .timestamp-btn-group {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.35rem;
+      margin-bottom: 0.45rem;
+    }
+
+    .nudge-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.12);
+      border-radius: 6px;
+      padding: 0.25rem 0.35rem;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .nudge-btns {
+      display: flex;
+      gap: 0.2rem;
+    }
+
+    .btn-nudge {
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      border-radius: 4px;
+      color: var(--text);
+      font-family: monospace;
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 0.2rem 0.35rem;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .btn-nudge:hover {
+      background: var(--primary);
+      color: #ffffff;
+      border-color: var(--primary);
+    }
+
+    .btn-preview-mini {
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      border-radius: 4px;
+      color: var(--primary);
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 0.2rem 0.45rem;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+
+    .btn-preview-mini:hover {
+      background: var(--primary);
+      color: #ffffff;
+    }
+
+    .visual-timeline-container {
+      margin-top: 0.25rem;
+      margin-bottom: 0.75rem;
+      padding: 0.6rem 0.75rem;
+      background: var(--code-bg);
+      border: 1px solid var(--code-border);
+      border-radius: 8px;
+    }
+
+    .timeline-track {
+      position: relative;
+      height: 20px;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 6px;
+      overflow: hidden;
+      cursor: pointer;
+      border: 1px solid var(--input-border);
+    }
+
+    .timeline-segment-cut {
+      position: absolute;
+      top: 0;
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #10b981);
+      opacity: 0.85;
+      border-left: 2px solid #60a5fa;
+      border-right: 2px solid #34d399;
+      transition: left 0.1s ease, width 0.1s ease;
+      display: none;
+    }
+
+    .timeline-playhead {
+      position: absolute;
+      top: 0;
+      left: 0%;
+      width: 3px;
+      height: 100%;
+      background: #f59e0b;
+      box-shadow: 0 0 6px #f59e0b;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .timeline-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.72rem;
+      font-family: monospace;
+      color: var(--text-muted);
+      margin-top: 0.35rem;
+    }
+
+    .btn-link-action {
+      background: none;
+      border: none;
+      color: var(--primary);
+      font-size: 0.72rem;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0;
+      text-decoration: underline;
+    }
+
+    .btn-link-action:hover {
+      color: #60a5fa;
+    }
+
+    .input-row-mini {
+      display: flex;
+      gap: 0.35rem;
+      align-items: center;
+    }
+
+    .input-row-mini input {
+      flex: 1;
+    }
+
+    .btn-icon-mini {
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      border-radius: var(--radius);
+      padding: 0.45rem 0.6rem;
+      cursor: pointer;
+      font-size: 0.82rem;
+      color: var(--text);
+      transition: all 0.15s;
+    }
+
+    .btn-icon-mini:hover {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
     }
 
     .cut-summary-box {
       background: var(--code-bg);
       border: 1px dashed var(--code-border);
       border-radius: 8px;
-      padding: 0.75rem 1rem;
+      padding: 0.65rem 0.85rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 1rem;
-      font-size: 0.85rem;
+      margin-bottom: 0.75rem;
+      font-size: 0.82rem;
     }
 
     .progress-bar-container {
@@ -589,31 +768,118 @@
           </div>
 
           <div class="timestamp-controls">
+            <!-- Box 1: Início -->
             <div class="timestamp-box">
-              <div class="timestamp-box-title">Início da Pregação</div>
-              <div class="timestamp-display" id="display-start">00:00:00</div>
-              <button type="button" class="btn btn-outline" style="width: 100%; font-size: 0.8rem;" onclick="captureTimestamp('start')">
-                ⏱️ Marcar Posição Atual
-              </button>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                <div class="timestamp-box-title">Início da Pregação</div>
+                <span style="font-size: 0.65rem; font-weight: 700; color: var(--primary); background: rgba(59, 130, 246, 0.15); padding: 0.1rem 0.35rem; border-radius: 4px;">Ponto A</span>
+              </div>
+              <input
+                type="text"
+                id="display-start"
+                class="timestamp-input"
+                value="00:00:00"
+                placeholder="00:00:00"
+                maxlength="8"
+                oninput="onTimestampBoxInput('start')"
+                onchange="formatTimestampBox('start')"
+                title="Clique para editar o início manualmente (HH:MM:SS ou MM:SS)"
+              />
+              <div class="timestamp-btn-group">
+                <button type="button" class="btn btn-primary" style="font-size: 0.76rem; padding: 0.38rem 0.4rem;" onclick="captureTimestamp('start')" title="Captura a posição atual do vídeo como início [Atalho: tecla I]">
+                  ⏱️ Marcar Atual
+                </button>
+                <button type="button" class="btn btn-outline" style="font-size: 0.76rem; padding: 0.38rem 0.4rem;" onclick="seekToPoint('start')" title="Leva o player para o ponto de início [Atalho: tecla []">
+                  ▶️ Ir no Player
+                </button>
+              </div>
+              <div class="nudge-toolbar">
+                <div class="nudge-btns">
+                  <button type="button" class="btn-nudge" onclick="nudgeTime('start', -5)" title="Recuar 5 segundos">-5s</button>
+                  <button type="button" class="btn-nudge" onclick="nudgeTime('start', -1)" title="Recuar 1 segundo">-1s</button>
+                  <button type="button" class="btn-nudge" onclick="nudgeTime('start', 1)" title="Avançar 1 segundo">+1s</button>
+                  <button type="button" class="btn-nudge" onclick="nudgeTime('start', 5)" title="Avançar 5 segundos">+5s</button>
+                </div>
+                <button type="button" class="btn-preview-mini" onclick="previewCutAudio('start')" title="Toca 5 segundos a partir do início para testar corte">
+                  🎧 Prévia 5s
+                </button>
+              </div>
             </div>
 
+            <!-- Box 2: Fim -->
             <div class="timestamp-box">
-              <div class="timestamp-box-title">Fim da Pregação</div>
-              <div class="timestamp-display" id="display-end">00:00:00</div>
-              <button type="button" class="btn btn-outline" style="width: 100%; font-size: 0.8rem;" onclick="captureTimestamp('end')">
-                ⏱️ Marcar Posição Atual
-              </button>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                <div class="timestamp-box-title">Fim da Pregação</div>
+                <span style="font-size: 0.65rem; font-weight: 700; color: var(--success); background: rgba(16, 185, 129, 0.15); padding: 0.1rem 0.35rem; border-radius: 4px;">Ponto B</span>
+              </div>
+              <input
+                type="text"
+                id="display-end"
+                class="timestamp-input end-input"
+                value="00:00:00"
+                placeholder="00:00:00"
+                maxlength="8"
+                oninput="onTimestampBoxInput('end')"
+                onchange="formatTimestampBox('end')"
+                title="Clique para editar o término manualmente (HH:MM:SS ou MM:SS)"
+              />
+              <div class="timestamp-btn-group">
+                <button type="button" class="btn btn-primary" style="font-size: 0.76rem; padding: 0.38rem 0.4rem;" onclick="captureTimestamp('end')" title="Captura a posição atual do vídeo como término [Atalho: tecla O]">
+                  ⏱️ Marcar Atual
+                </button>
+                <button type="button" class="btn btn-outline" style="font-size: 0.76rem; padding: 0.38rem 0.4rem;" onclick="seekToPoint('end')" title="Leva o player para o ponto de término [Atalho: tecla ]]">
+                  ▶️ Ir no Player
+                </button>
+              </div>
+              <div class="nudge-toolbar">
+                <div class="nudge-btns">
+                  <button type="button" class="btn-nudge" onclick="nudgeTime('end', -5)" title="Recuar 5 segundos">-5s</button>
+                  <button type="button" class="btn-nudge" onclick="nudgeTime('end', -1)" title="Recuar 1 segundo">-1s</button>
+                  <button type="button" class="btn-nudge" onclick="nudgeTime('end', 1)" title="Avançar 1 segundo">+1s</button>
+                  <button type="button" class="btn-nudge" onclick="nudgeTime('end', 5)" title="Avançar 5 segundos">+5s</button>
+                </div>
+                <button type="button" class="btn-preview-mini" onclick="previewCutAudio('end')" title="Toca os últimos 5 segundos antes do corte para testar">
+                  🎧 Prévia 5s
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Linha do Tempo Visual Interativa -->
+          <div class="visual-timeline-container">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem; font-size: 0.75rem;">
+              <span style="font-weight: 700; color: var(--text);">Linha do Tempo do Culto</span>
+              <span style="font-size: 0.7rem; color: var(--text-muted);">Clique na barra para navegar</span>
+            </div>
+            <div class="timeline-track" id="timeline-track" onclick="onTimelineTrackClick(event)" title="Clique para navegar no vídeo">
+              <div class="timeline-segment-cut" id="timeline-segment-cut"></div>
+              <div class="timeline-playhead" id="timeline-playhead"></div>
+            </div>
+            <div class="timeline-labels">
+              <span>00:00:00</span>
+              <span id="timeline-cut-info" style="color: var(--primary); font-weight: 600;">Vídeo Completo</span>
+              <span id="timeline-total-duration">--:--:--</span>
             </div>
           </div>
 
           <div class="cut-summary-box">
             <div>
-              <strong>Duração do Corte: </strong>
+              <strong>Corte: </strong>
               <span id="cut-duration-text">Vídeo completo (sem corte)</span>
             </div>
-            <button type="button" class="btn btn-outline" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="resetCut()">
-              Limpar Corte
-            </button>
+            <div style="display: flex; gap: 0.4rem;">
+              <button type="button" class="btn btn-outline" style="padding: 0.25rem 0.55rem; font-size: 0.74rem;" onclick="previewCutAudio('range')" title="Tocar o trecho recortado inteiro">
+                🎬 Prévia Corte
+              </button>
+              <button type="button" class="btn btn-outline" style="padding: 0.25rem 0.55rem; font-size: 0.74rem;" onclick="resetCut()" title="Zerar corte e voltar a vídeo completo">
+                ⚡ Vídeo Completo
+              </button>
+            </div>
+          </div>
+
+          <!-- Barra de Atalhos de Teclado -->
+          <div style="font-size: 0.71rem; color: var(--text-muted); padding: 0.35rem 0.6rem; background: rgba(0, 0, 0, 0.1); border: 1px solid var(--input-border); border-radius: 6px; display: flex; align-items: center; justify-content: space-between;">
+            <span>⌨️ <strong>Atalhos:</strong> [<strong>I</strong>] Marca Início &nbsp;|&nbsp; [<strong>O</strong>] Marca Fim &nbsp;|&nbsp; [<strong>[</strong>] Ir ao Início &nbsp;|&nbsp; [<strong>]</strong>] Ir ao Fim &nbsp;|&nbsp; [<strong>Espaço</strong>] Play/Pause</span>
           </div>
         </div>
       </section>
@@ -638,12 +904,24 @@
 
           <div class="form-group" style="display: flex; gap: 0.75rem; margin-bottom: 0.5rem;">
             <div style="flex: 1;">
-              <label for="cut-start-input">Início (HH:MM:SS)</label>
-              <input type="text" id="cut-start-input" placeholder="00:00:00" onchange="syncManualTimestamp()">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                <label for="cut-start-input" style="margin-bottom: 0;">Início (HH:MM:SS)</label>
+                <button type="button" class="btn-link-action" onclick="seekToPoint('start')" title="Levar player ao ponto de início">▶️ Ir no Player</button>
+              </div>
+              <div class="input-row-mini">
+                <input type="text" id="cut-start-input" placeholder="00:00:00" oninput="onFormCutInput('start')" onchange="formatFormCutInput('start')">
+                <button type="button" class="btn-icon-mini" onclick="captureTimestamp('start')" title="Captura tempo atual do player">⏱️</button>
+              </div>
             </div>
             <div style="flex: 1;">
-              <label for="cut-end-input">Fim (HH:MM:SS)</label>
-              <input type="text" id="cut-end-input" placeholder="00:00:00" onchange="syncManualTimestamp()">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                <label for="cut-end-input" style="margin-bottom: 0;">Fim (HH:MM:SS)</label>
+                <button type="button" class="btn-link-action" onclick="seekToPoint('end')" title="Levar player ao ponto de término">▶️ Ir no Player</button>
+              </div>
+              <div class="input-row-mini">
+                <input type="text" id="cut-end-input" placeholder="00:00:00" oninput="onFormCutInput('end')" onchange="formatFormCutInput('end')">
+                <button type="button" class="btn-icon-mini" onclick="captureTimestamp('end')" title="Captura tempo atual do player">⏱️</button>
+              </div>
             </div>
           </div>
 
@@ -1242,6 +1520,7 @@
   function onPlayerReady(event) {
     if (playerTimer) clearInterval(playerTimer);
     playerTimer = setInterval(updatePlayerTimeDisplay, 500);
+    updateVisualTimeline();
   }
 
   function formatSeconds(secs) {
@@ -1253,86 +1532,363 @@
   }
 
   function parseFormattedTime(str) {
-    if (!str || !str.trim()) return null;
-    const parts = str.trim().split(':').map(Number);
-    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-    if (parts.length === 2) return parts[0] * 60 + parts[1];
-    if (parts.length === 1) return parts[0];
+    if (!str || !String(str).trim()) return null;
+    str = String(str).trim();
+    const parts = str.split(':').map(Number);
+    if (parts.length === 3 && !parts.some(isNaN)) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2 && !parts.some(isNaN)) return parts[0] * 60 + parts[1];
+    if (parts.length === 1 && !isNaN(parts[0])) return parts[0];
     return null;
+  }
+
+  function normalizeTimeInput(val) {
+    if (!val) return "00:00:00";
+    val = String(val).trim();
+    if (val === "" || val === "0" || val === "00:00:00") return "00:00:00";
+
+    if (val.includes(":")) {
+      const parts = val.split(":").map(p => parseInt(p, 10) || 0);
+      if (parts.length === 3) {
+        return `${String(parts[0]).padStart(2, '0')}:${String(parts[1]).padStart(2, '0')}:${String(parts[2]).padStart(2, '0')}`;
+      }
+      if (parts.length === 2) {
+        const totalSec = parts[0] * 60 + parts[1];
+        return formatSeconds(totalSec);
+      }
+    }
+
+    const digits = val.replace(/\D/g, "");
+    if (digits.length === 6) {
+      return `${digits.slice(0, 2)}:${digits.slice(2, 4)}:${digits.slice(4, 6)}`;
+    } else if (digits.length === 5) {
+      return `0${digits.slice(0, 1)}:${digits.slice(1, 3)}:${digits.slice(3, 5)}`;
+    } else if (digits.length === 4) {
+      return `00:${digits.slice(0, 2)}:${digits.slice(2, 4)}`;
+    } else if (digits.length > 0) {
+      return formatSeconds(parseInt(digits, 10));
+    }
+    return "00:00:00";
   }
 
   function updatePlayerTimeDisplay() {
     if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
       try {
         const current = ytPlayer.getCurrentTime() || 0;
+        const dur = (ytPlayer.getDuration ? ytPlayer.getDuration() : 0) || 0;
         document.getElementById('current-player-time').textContent = formatSeconds(current);
+
+        if (dur > 0) {
+          const pct = Math.min(100, Math.max(0, (current / dur) * 100));
+          const playhead = document.getElementById('timeline-playhead');
+          if (playhead) playhead.style.left = `${pct}%`;
+          const durLabel = document.getElementById('timeline-total-duration');
+          if (durLabel && durLabel.textContent === '--:--:--') {
+            durLabel.textContent = formatSeconds(dur);
+          }
+        }
       } catch (e) {}
     }
   }
 
-  function captureTimestamp(type) {
-    if (!ytPlayer || typeof ytPlayer.getCurrentTime !== 'function') return;
-    try {
-      const current = Math.floor(ytPlayer.getCurrentTime());
-      const formatted = formatSeconds(current);
+  function onTimestampBoxInput(type) {
+    const isStart = type === 'start';
+    const boxEl = document.getElementById(isStart ? 'display-start' : 'display-end');
+    const formEl = document.getElementById(isStart ? 'cut-start-input' : 'cut-end-input');
+    if (boxEl && formEl) {
+      formEl.value = boxEl.value;
+    }
+    updateCutSummary();
+    updateVisualTimeline();
+  }
 
-      if (type === 'start') {
-        document.getElementById('display-start').textContent = formatted;
-        document.getElementById('cut-start-input').value = formatted;
-      } else {
-        document.getElementById('display-end').textContent = formatted;
-        document.getElementById('cut-end-input').value = formatted;
-      }
+  function formatTimestampBox(type) {
+    const isStart = type === 'start';
+    const boxEl = document.getElementById(isStart ? 'display-start' : 'display-end');
+    const formEl = document.getElementById(isStart ? 'cut-start-input' : 'cut-end-input');
+    if (boxEl) {
+      const formatted = normalizeTimeInput(boxEl.value);
+      boxEl.value = formatted;
+      if (formEl) formEl.value = formatted;
       updateCutSummary();
+      updateVisualTimeline();
+    }
+  }
+
+  function onFormCutInput(type) {
+    const isStart = type === 'start';
+    const boxEl = document.getElementById(isStart ? 'display-start' : 'display-end');
+    const formEl = document.getElementById(isStart ? 'cut-start-input' : 'cut-end-input');
+    if (boxEl && formEl) {
+      boxEl.value = formEl.value;
+    }
+    updateCutSummary();
+    updateVisualTimeline();
+  }
+
+  function formatFormCutInput(type) {
+    const isStart = type === 'start';
+    const boxEl = document.getElementById(isStart ? 'display-start' : 'display-end');
+    const formEl = document.getElementById(isStart ? 'cut-start-input' : 'cut-end-input');
+    if (formEl) {
+      const formatted = normalizeTimeInput(formEl.value);
+      formEl.value = formatted;
+      if (boxEl) boxEl.value = formatted;
+      updateCutSummary();
+      updateVisualTimeline();
+    }
+  }
+
+  function captureTimestamp(type) {
+    if (!ytPlayer || typeof ytPlayer.getCurrentTime !== 'function') {
+      showToast("⚠️ Reprodutor do YouTube ainda não pronto.");
+      return;
+    }
+    try {
+      const current = Math.floor(ytPlayer.getCurrentTime() || 0);
+      const formatted = formatSeconds(current);
+      const isStart = type === 'start';
+
+      const boxEl = document.getElementById(isStart ? 'display-start' : 'display-end');
+      const formEl = document.getElementById(isStart ? 'cut-start-input' : 'cut-end-input');
+
+      if (boxEl) boxEl.value = formatted;
+      if (formEl) formEl.value = formatted;
+
+      updateCutSummary();
+      updateVisualTimeline();
+      showToast(`⏱️ ${isStart ? 'Início' : 'Fim'} marcado em ${formatted}`);
     } catch (e) {
       console.error(e);
     }
   }
 
-  function syncManualTimestamp() {
-    const startVal = document.getElementById('cut-start-input').value.trim();
-    const endVal = document.getElementById('cut-end-input').value.trim();
-    document.getElementById('display-start').textContent = startVal || "00:00:00";
-    document.getElementById('display-end').textContent = endVal || "00:00:00";
+  function seekToPoint(type) {
+    const isStart = type === 'start';
+    const inputEl = document.getElementById(isStart ? 'display-start' : 'display-end');
+    const val = inputEl ? inputEl.value : "";
+    const sec = parseFormattedTime(val);
+
+    if (sec === null || isNaN(sec)) {
+      showToast("⚠️ Digite um tempo válido primeiro (ex: 00:52:10)");
+      return;
+    }
+    if (!ytPlayer || typeof ytPlayer.seekTo !== 'function') {
+      showToast("⚠️ Reprodutor do YouTube não carregado.");
+      return;
+    }
+    try {
+      ytPlayer.seekTo(sec, true);
+      if (typeof ytPlayer.playVideo === 'function') {
+        ytPlayer.playVideo();
+      }
+      showToast(`▶️ Navegado para ${isStart ? 'Início' : 'Fim'} (${formatSeconds(sec)})`);
+    } catch (e) {
+      console.error("seekToPoint error", e);
+    }
+  }
+
+  function nudgeTime(type, delta) {
+    const isStart = type === 'start';
+    const boxEl = document.getElementById(isStart ? 'display-start' : 'display-end');
+    const formEl = document.getElementById(isStart ? 'cut-start-input' : 'cut-end-input');
+
+    let currentSec = parseFormattedTime(boxEl ? boxEl.value : "00:00:00") || 0;
+    let newSec = Math.max(0, currentSec + delta);
+    const formatted = formatSeconds(newSec);
+
+    if (boxEl) boxEl.value = formatted;
+    if (formEl) formEl.value = formatted;
+
     updateCutSummary();
+    updateVisualTimeline();
+
+    if (ytPlayer && typeof ytPlayer.seekTo === 'function') {
+      try {
+        ytPlayer.seekTo(newSec, true);
+      } catch (e) {}
+    }
+    showToast(`⏱️ ${isStart ? 'Início' : 'Fim'}: ${formatted} (${delta > 0 ? '+' : ''}${delta}s)`);
+  }
+
+  let previewTimeoutId = null;
+  function previewCutAudio(type) {
+    if (previewTimeoutId) {
+      clearTimeout(previewTimeoutId);
+      previewTimeoutId = null;
+    }
+    if (!ytPlayer || typeof ytPlayer.seekTo !== 'function') {
+      showToast("⚠️ Reprodutor do YouTube não carregado.");
+      return;
+    }
+
+    const startSec = parseFormattedTime(document.getElementById('display-start')?.value) || 0;
+    const endSec = parseFormattedTime(document.getElementById('display-end')?.value) || 0;
+
+    let targetSec = 0;
+    let duration = 5;
+
+    if (type === 'start') {
+      targetSec = startSec;
+      duration = 5;
+      showToast(`🎧 Prévia Início: reproduzindo 5s a partir de ${formatSeconds(targetSec)}...`);
+    } else if (type === 'end') {
+      targetSec = Math.max(0, endSec - 5);
+      duration = 5;
+      showToast(`🎧 Prévia Término: reproduzindo 5s até ${formatSeconds(endSec)}...`);
+    } else if (type === 'range') {
+      if (endSec <= startSec) {
+        showToast("⚠️ Defina início e término válidos para a prévia completa.");
+        return;
+      }
+      targetSec = startSec;
+      duration = endSec - startSec;
+      showToast(`🎬 Reproduzindo corte selecionado (${formatSeconds(startSec)} até ${formatSeconds(endSec)})...`);
+    }
+
+    try {
+      ytPlayer.seekTo(targetSec, true);
+      ytPlayer.playVideo();
+
+      previewTimeoutId = setTimeout(() => {
+        try {
+          if (ytPlayer && typeof ytPlayer.pauseVideo === 'function') {
+            ytPlayer.pauseVideo();
+            showToast(`⏹️ Fim da prévia.`);
+          }
+        } catch (e) {}
+        previewTimeoutId = null;
+      }, duration * 1000);
+    } catch (e) {
+      console.error("previewCutAudio error", e);
+    }
+  }
+
+  function updateVisualTimeline() {
+    const dur = (ytPlayer && typeof ytPlayer.getDuration === 'function') ? (ytPlayer.getDuration() || 0) : 0;
+    const startSec = parseFormattedTime(document.getElementById('display-start')?.value || document.getElementById('cut-start-input')?.value);
+    const endSec = parseFormattedTime(document.getElementById('display-end')?.value || document.getElementById('cut-end-input')?.value);
+
+    const cutSegment = document.getElementById('timeline-segment-cut');
+    const durLabel = document.getElementById('timeline-total-duration');
+    const infoLabel = document.getElementById('timeline-cut-info');
+
+    if (dur > 0 && durLabel) {
+      durLabel.textContent = formatSeconds(Math.floor(dur));
+    }
+
+    if (!cutSegment) return;
+
+    if (dur > 0 && startSec !== null && endSec !== null && endSec > startSec) {
+      const leftPct = Math.min(100, Math.max(0, (startSec / dur) * 100));
+      const widthPct = Math.min(100 - leftPct, Math.max(0, ((endSec - startSec) / dur) * 100));
+      cutSegment.style.display = 'block';
+      cutSegment.style.left = `${leftPct.toFixed(2)}%`;
+      cutSegment.style.width = `${widthPct.toFixed(2)}%`;
+
+      const cutDur = endSec - startSec;
+      const pctCulto = Math.round((cutDur / dur) * 100);
+      if (infoLabel) {
+        infoLabel.innerHTML = `✂️ Corte: ${formatSeconds(startSec)} ➔ ${formatSeconds(endSec)} (${Math.floor(cutDur/60)} min • ${pctCulto}% do culto)`;
+      }
+    } else {
+      cutSegment.style.display = 'none';
+      if (infoLabel) {
+        infoLabel.textContent = "⚡ Vídeo Completo (Sem corte)";
+      }
+    }
+  }
+
+  function onTimelineTrackClick(event) {
+    const track = document.getElementById('timeline-track');
+    if (!track || !ytPlayer || typeof ytPlayer.seekTo !== 'function') return;
+    const dur = (ytPlayer.getDuration ? ytPlayer.getDuration() : 0) || 0;
+    if (dur <= 0) return;
+
+    const rect = track.getBoundingClientRect();
+    const clickX = event.clientX - rect.left;
+    const pct = Math.max(0, Math.min(1, clickX / rect.width));
+    const targetSec = Math.floor(pct * dur);
+    ytPlayer.seekTo(targetSec, true);
+    showToast(`▶️ Navegado para ${formatSeconds(targetSec)}`);
   }
 
   function resetCut() {
-    document.getElementById('cut-start-input').value = "";
-    document.getElementById('cut-end-input').value = "";
-    document.getElementById('display-start').textContent = "00:00:00";
-    document.getElementById('display-end').textContent = "00:00:00";
+    const sInput = document.getElementById('cut-start-input');
+    const eInput = document.getElementById('cut-end-input');
+    const dStart = document.getElementById('display-start');
+    const dEnd = document.getElementById('display-end');
+    if (sInput) sInput.value = "";
+    if (eInput) eInput.value = "";
+    if (dStart) dStart.value = "00:00:00";
+    if (dEnd) dEnd.value = "00:00:00";
     updateCutSummary();
+    updateVisualTimeline();
+    showToast("⚡ Corte limpo: modo vídeo completo (sem corte).");
   }
 
   function updateCutSummary() {
-    const startSec = parseFormattedTime(document.getElementById('cut-start-input').value);
-    const endSec = parseFormattedTime(document.getElementById('cut-end-input').value);
+    const startVal = document.getElementById('display-start')?.value || document.getElementById('cut-start-input')?.value || "";
+    const endVal = document.getElementById('display-end')?.value || document.getElementById('cut-end-input')?.value || "";
+    const startSec = parseFormattedTime(startVal);
+    const endSec = parseFormattedTime(endVal);
     const summaryEl = document.getElementById('cut-duration-text');
+    const btnMp4 = document.getElementById('btn-download-mp4');
 
-    if (startSec !== null && endSec !== null) {
+    const isExplicitZeroOrEmpty = (!startSec || startSec === 0) && (!endSec || endSec === 0);
+
+    if (!isExplicitZeroOrEmpty && startSec !== null && endSec !== null && endSec > startSec) {
       const diff = endSec - startSec;
-      if (diff <= 0) {
-        summaryEl.innerHTML = `<span style="color: var(--danger);">⚠️ O término deve ser posterior ao início.</span>`;
-      } else if (diff < 900) {
-        summaryEl.innerHTML = `<span style="color: var(--warning);">⚠️ Corte curto (${Math.floor(diff/60)} min). Mínimo recomendado: 15 min.</span>`;
+      if (diff < 900) {
+        if (summaryEl) summaryEl.innerHTML = `<span style="color: var(--warning);">⚠️ Corte curto (${Math.floor(diff/60)} min). Mínimo recomendado: 15 min.</span>`;
       } else {
         const m = Math.floor(diff / 60);
         const s = diff % 60;
-        summaryEl.innerHTML = `<span style="color: var(--success); font-weight: 600;">✅ ${m} min ${s} seg de pregação selecionada</span>`;
-        const btnMp4 = document.getElementById('btn-download-mp4');
+        if (summaryEl) summaryEl.innerHTML = `<span style="color: var(--success); font-weight: 600;">✅ ${m} min ${s} seg de pregação selecionada</span>`;
         if (btnMp4) {
           btnMp4.innerHTML = `📥 Baixar Vídeo MP4 <span style="font-size: 0.72rem; opacity: 0.85;">(Recortar: ${m} min)</span>`;
           btnMp4.classList.remove('btn-primary');
           btnMp4.classList.add('btn-outline');
         }
       }
-    } else if (startSec !== null || endSec !== null) {
-      summaryEl.innerHTML = `<span style="color: var(--warning);">Defina início e fim para recortar.</span>`;
+    } else if (!isExplicitZeroOrEmpty && (startSec !== null || endSec !== null)) {
+      if (summaryEl) summaryEl.innerHTML = `<span style="color: var(--warning);">⚠️ Defina ambos início e fim para recortar.</span>`;
     } else {
-      summaryEl.textContent = "Vídeo completo (sem corte)";
+      if (summaryEl) summaryEl.innerHTML = `<span style="color: var(--primary); font-weight: 600;">⚡ Vídeo completo (sem corte) • Remux instantâneo ~2s</span>`;
+      if (btnMp4) {
+        btnMp4.innerHTML = `📥 Baixar Vídeo MP4 <span style="font-size: 0.72rem; opacity: 0.85;">(Vídeo Completo)</span>`;
+        btnMp4.classList.remove('btn-outline');
+        btnMp4.classList.add('btn-primary');
+      }
     }
   }
+
+  // Atalhos de teclado profissionais (I = Mark In, O = Mark Out, [ = Seek In, ] = Seek Out, Espaço = Play/Pause)
+  window.addEventListener('keydown', (e) => {
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) {
+      return;
+    }
+    if (e.key === 'i' || e.key === 'I') {
+      e.preventDefault();
+      captureTimestamp('start');
+    } else if (e.key === 'o' || e.key === 'O') {
+      e.preventDefault();
+      captureTimestamp('end');
+    } else if (e.key === '[') {
+      e.preventDefault();
+      seekToPoint('start');
+    } else if (e.key === ']') {
+      e.preventDefault();
+      seekToPoint('end');
+    } else if (e.key === ' ') {
+      e.preventDefault();
+      if (ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
+        const state = ytPlayer.getPlayerState();
+        if (state === 1) ytPlayer.pauseVideo();
+        else ytPlayer.playVideo();
+      }
+    }
+  });
 
   function selectChannelVideo(id) {
     const item = channelVideosMap[id];
@@ -1525,8 +2081,18 @@
     const videoInput = document.getElementById('video-input').value.trim();
     const title = document.getElementById('episode-title').value.trim();
     const description = document.getElementById('episode-description')?.value.trim() || null;
-    const start = document.getElementById('cut-start-input').value.trim();
-    const end = document.getElementById('cut-end-input').value.trim();
+
+    let sVal = document.getElementById('display-start')?.value || document.getElementById('cut-start-input')?.value || "";
+    let eVal = document.getElementById('display-end')?.value || document.getElementById('cut-end-input')?.value || "";
+    let sSec = parseFormattedTime(sVal);
+    let eSec = parseFormattedTime(eVal);
+    let start = (sSec && sSec > 0) ? formatSeconds(sSec) : null;
+    let end = (eSec && eSec > 0) ? formatSeconds(eSec) : null;
+    if (start && end && sSec >= eSec) {
+      start = null;
+      end = null;
+    }
+
     const gitPush = document.getElementById('git-push-check').checked;
     const mediaFormat = document.querySelector('input[name="media-format"]:checked')?.value || "audio";
     const quality = getSelectedQuality();
@@ -1679,13 +2245,17 @@
       return;
     }
 
-    let start = document.getElementById('cut-start-input')?.value.trim() || null;
-    let end = document.getElementById('cut-end-input')?.value.trim() || null;
-    if (start === "00:00:00" && end === "00:00:00") {
+    let sVal = document.getElementById('display-start')?.value || document.getElementById('cut-start-input')?.value || "";
+    let eVal = document.getElementById('display-end')?.value || document.getElementById('cut-end-input')?.value || "";
+    let sSec = parseFormattedTime(sVal);
+    let eSec = parseFormattedTime(eVal);
+    let start = (sSec && sSec > 0) ? formatSeconds(sSec) : null;
+    let end = (eSec && eSec > 0) ? formatSeconds(eSec) : null;
+    if (start && end && sSec >= eSec) {
       start = null;
       end = null;
     }
-    const isCutting = (start && end && start !== end);
+    const isCutting = (start && end);
     const quality = getSelectedQuality();
     const btnMp4 = document.getElementById('btn-download-mp4');
     const hudBox = document.getElementById('manual-hud-box');
@@ -2210,12 +2780,16 @@ Contato: (61) 3386-2122`;
 
       // Preenche os campos de início e término
       if (data.start) {
-        document.getElementById('display-start').textContent = data.start;
-        document.getElementById('cut-start-input').value = data.start;
+        const dStart = document.getElementById('display-start');
+        if (dStart) dStart.value = data.start;
+        const cStart = document.getElementById('cut-start-input');
+        if (cStart) cStart.value = data.start;
       }
       if (data.end) {
-        document.getElementById('display-end').textContent = data.end;
-        document.getElementById('cut-end-input').value = data.end;
+        const dEnd = document.getElementById('display-end');
+        if (dEnd) dEnd.value = data.end;
+        const cEnd = document.getElementById('cut-end-input');
+        if (cEnd) cEnd.value = data.end;
       }
 
       // Se tiver sugestão de título
@@ -2231,10 +2805,14 @@ Contato: (61) 3386-2122`;
       }
 
       updateCutSummary();
+      updateVisualTimeline();
 
       // Navega o reprodutor do YouTube para o segundo exato de início
-      if (ytPlayer && typeof ytPlayer.seekTo === 'function' && data.start_sec !== undefined) {
-        ytPlayer.seekTo(data.start_sec, true);
+      if (ytPlayer && typeof ytPlayer.seekTo === 'function') {
+        const startSec = data.start_sec !== undefined ? data.start_sec : parseFormattedTime(data.start);
+        if (startSec !== null) {
+          ytPlayer.seekTo(startSec, true);
+        }
       }
 
       // Exibe o card de resultado
