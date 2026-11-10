@@ -253,6 +253,48 @@ def normalize_cut_bounds(start_str: str | None, end_str: str | None) -> tuple[in
     return start_sec, end_sec
 
 
+MANUAL_EXPORT_CANCEL_EVENT = threading.Event()
+MANUAL_EXPORT_PROCS: set[subprocess.Popen] = set()
+
+PUBLISH_CANCEL_EVENT = threading.Event()
+PUBLISH_PROCS: set[subprocess.Popen] = set()
+
+
+def cancel_manual_export() -> dict[str, Any]:
+    MANUAL_EXPORT_CANCEL_EVENT.set()
+    for p in list(MANUAL_EXPORT_PROCS):
+        try:
+            p.terminate()
+            p.kill()
+        except Exception:
+            pass
+    MANUAL_EXPORT_PROCS.clear()
+    set_manual_export(
+        "idle",
+        "Download cancelado pelo usuário.",
+        progress=0,
+        stage="idle",
+    )
+    return {"ok": True, "message": "Download de vídeo interrompido com sucesso."}
+
+
+def cancel_publish() -> dict[str, Any]:
+    PUBLISH_CANCEL_EVENT.set()
+    for p in list(PUBLISH_PROCS):
+        try:
+            p.terminate()
+            p.kill()
+        except Exception:
+            pass
+    PUBLISH_PROCS.clear()
+    set_task(
+        "idle",
+        "Publicação cancelada pelo usuário.",
+        progress=0,
+    )
+    return {"ok": True, "message": "Publicação cancelada com sucesso."}
+
+
 def publish_worker(
     video_id: str,
     start_str: str | None,
@@ -264,6 +306,15 @@ def publish_worker(
     quality: str = "720",
     description_override: str | None = None,
 ) -> None:
+    PUBLISH_CANCEL_EVENT.clear()
+    PUBLISH_PROCS.clear()
+
+    def reg_pub_proc(p: subprocess.Popen):
+        PUBLISH_PROCS.add(p)
+
+    def is_pub_cancelled() -> bool:
+        return PUBLISH_CANCEL_EVENT.is_set()
+
     try:
         set_task("running", f"Iniciando publicação ({media_format}) do vídeo {video_id}...", 5, "Buscando detalhes do vídeo no YouTube...")
         details = video_details(video_id)
@@ -323,7 +374,14 @@ def publish_worker(
                     mapped = int(25 + (pct * 0.25))
                     set_task("running", f"Baixando vídeo ({quality}p)... {pct:.1f}%", mapped, speed=spd, eta=eta, stage="downloading")
 
-                video_src = download_video(video_id, directory, quality=quality, progress_callback=on_dl)
+                video_src = download_video(
+                    video_id,
+                    directory,
+                    quality=quality,
+                    progress_callback=on_dl,
+                    cancellation_check=is_pub_cancelled,
+                    register_proc=reg_pub_proc,
+                )
 
                 set_task("running", "Processando vídeo MP4 com FFmpeg...", 50, "Cortando e otimizando vídeo MP4 (+faststart)...", stage="encoding")
                 def on_enc(pct: float, spd: str, eta: str):
@@ -331,7 +389,15 @@ def publish_worker(
                     set_task("running", f"Codificando MP4... {pct:.1f}%", mapped, speed=spd, eta=eta, stage="encoding")
 
                 mp4 = directory / f"{video_id}.mp4"
-                v_size, v_dur = encode_mp4(video_src, mp4, start_sec, end_sec, progress_callback=on_enc)
+                v_size, v_dur = encode_mp4(
+                    video_src,
+                    mp4,
+                    start_sec,
+                    end_sec,
+                    progress_callback=on_enc,
+                    cancellation_check=is_pub_cancelled,
+                    register_proc=reg_pub_proc,
+                )
 
                 set_task("running", f"Enviando vídeo ({v_size // 1024 // 1024} MB) para o Cloudflare R2...", 70, "Upload do vídeo MP4 para o Cloudflare R2...")
                 v_key = f"episodes/{video_id}.mp4"
@@ -367,7 +433,12 @@ def publish_worker(
             else:
                 # Audio only
                 set_task("running", "Baixando áudio do YouTube...", 30, f"Executando download do áudio de {video_id}...")
-                audio_src = download_audio(video_id, directory)
+                audio_src = download_audio(
+                    video_id,
+                    directory,
+                    cancellation_check=is_pub_cancelled,
+                    register_proc=reg_pub_proc,
+                )
                 set_task("running", "Normalizando áudio para -16 LUFS com capa embutida...", 55, "Processando FFmpeg loudnorm e MP3...")
                 mp3 = directory / f"{video_id}.mp3"
                 size, duration = encode_mp3(audio_src, mp3, start_sec, end_sec, artwork_path=art_file)
@@ -445,7 +516,13 @@ def publish_worker(
             local_art=local_art_path,
             local_mp3=local_mp3_path,
         )
+    except InterruptedError:
+        LOG.info("publish_worker cancelado pelo usuário.")
+        set_task("idle", "Publicação cancelada pelo usuário.", 0, "Publicação cancelada pelo usuário.")
     except Exception as exc:
+        if PUBLISH_CANCEL_EVENT.is_set():
+            set_task("idle", "Publicação cancelada pelo usuário.", 0, "Publicação cancelada pelo usuário.")
+            return
         LOG.exception("Erro ao publicar episódio: %s", exc)
         set_task("error", f"Falha na publicação: {exc}", 0, f"ERRO: {exc}", error=str(exc))
 
@@ -527,6 +604,20 @@ def manual_export_worker(
     quality: str = "720",
     force: bool = False,
 ) -> None:
+    MANUAL_EXPORT_CANCEL_EVENT.clear()
+    MANUAL_EXPORT_PROCS.clear()
+
+    exports_dir = Path("exports").resolve()
+    exports_dir.mkdir(exist_ok=True)
+    mp4_path = exports_dir / f"{video_id}.mp4"
+    art_path = exports_dir / f"{video_id}.jpg"
+
+    def reg_manual_proc(p: subprocess.Popen):
+        MANUAL_EXPORT_PROCS.add(p)
+
+    def is_manual_cancelled() -> bool:
+        return MANUAL_EXPORT_CANCEL_EVENT.is_set()
+
     try:
         set_manual_export(
             "running",
@@ -535,10 +626,6 @@ def manual_export_worker(
             stage="downloading",
             video_id=video_id,
         )
-        exports_dir = Path("exports").resolve()
-        exports_dir.mkdir(exist_ok=True)
-        mp4_path = exports_dir / f"{video_id}.mp4"
-        art_path = exports_dir / f"{video_id}.jpg"
 
         start_sec, end_sec = normalize_cut_bounds(start_str, end_str)
 
@@ -580,10 +667,25 @@ def manual_export_worker(
 
             with tempfile.TemporaryDirectory(prefix="manual-export-") as tmp:
                 set_manual_export("running", f"Baixando stream ({quality}p)...", 10, stage="downloading", video_id=video_id)
-                v_src = download_video(video_id, Path(tmp), quality=quality, progress_callback=on_dl)
+                v_src = download_video(
+                    video_id,
+                    Path(tmp),
+                    quality=quality,
+                    progress_callback=on_dl,
+                    cancellation_check=is_manual_cancelled,
+                    register_proc=reg_manual_proc,
+                )
 
                 set_manual_export("running", f"{enc_action} com FFmpeg...", 55, stage=enc_stage, video_id=video_id)
-                encode_mp4(v_src, mp4_path, start_sec, end_sec, progress_callback=on_enc)
+                encode_mp4(
+                    v_src,
+                    mp4_path,
+                    start_sec,
+                    end_sec,
+                    progress_callback=on_enc,
+                    cancellation_check=is_manual_cancelled,
+                    register_proc=reg_manual_proc,
+                )
 
         v_size_mb = mp4_path.stat().st_size // 1024 // 1024
         completed_msg = f"Vídeo recortado e pronto! ({v_size_mb} MB)" if is_cut else f"Vídeo completo pronto para download! ({v_size_mb} MB)"
@@ -597,7 +699,35 @@ def manual_export_worker(
             video_id=video_id,
             download_url=f"/exports/{video_id}.mp4",
         )
+    except InterruptedError:
+        LOG.info("manual_export_worker cancelado pelo usuário.")
+        if mp4_path.exists():
+            try:
+                mp4_path.unlink()
+            except Exception:
+                pass
+        set_manual_export(
+            "idle",
+            "Download cancelado pelo usuário.",
+            progress=0,
+            stage="idle",
+            video_id=video_id,
+        )
     except Exception as exc:
+        if MANUAL_EXPORT_CANCEL_EVENT.is_set():
+            if mp4_path.exists():
+                try:
+                    mp4_path.unlink()
+                except Exception:
+                    pass
+            set_manual_export(
+                "idle",
+                "Download cancelado pelo usuário.",
+                progress=0,
+                stage="idle",
+                video_id=video_id,
+            )
+            return
         LOG.exception("Erro ao gerar vídeo manual: %s", exc)
         set_manual_export("error", f"Falha ao gerar vídeo: {exc}", 0, stage="error", error=str(exc), video_id=video_id)
 
@@ -875,6 +1005,16 @@ class StudioHandler(BaseHTTPRequestHandler):
         if path == "/api/spotify-cancel":
             cancel_spotify_upload()
             self.send_json({"ok": True, "message": "Automação do Spotify cancelada."})
+            return
+
+        if path == "/api/cancel-manual-export":
+            res = cancel_manual_export()
+            self.send_json(res)
+            return
+
+        if path == "/api/cancel-publish":
+            res = cancel_publish()
+            self.send_json(res)
             return
 
         if path == "/api/suggest-cut":

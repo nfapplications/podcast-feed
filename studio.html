@@ -1058,7 +1058,12 @@
                 <span class="hud-pulse-dot"></span>
                 <span id="task-stage-badge" class="badge" style="background: rgba(59, 130, 246, 0.2); color: var(--primary); font-family: monospace; letter-spacing: 0.5px;">INICIANDO...</span>
               </div>
-              <div id="task-message" style="font-size: 0.85rem; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 65%;">Aguardando...</div>
+              <div style="display: flex; align-items: center; gap: 0.6rem;">
+                <div id="task-message" style="font-size: 0.85rem; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px;">Aguardando...</div>
+                <button type="button" id="btn-cancel-publish" class="btn btn-outline" style="border-color: var(--danger); color: var(--danger); font-size: 0.72rem; padding: 0.2rem 0.6rem; font-weight: 600;" onclick="handleCancelPublish()">
+                  🛑 Parar / Cancelar
+                </button>
+              </div>
             </div>
 
             <!-- Stats Grid: 3 HUD Cards -->
@@ -1151,7 +1156,12 @@
                       <div id="manual-progress-fill" class="cyber-progress-fill" style="width: 0%;"></div>
                     </div>
 
-                    <div id="manual-hud-msg" style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.3;">Iniciando download...</div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
+                      <div id="manual-hud-msg" style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Iniciando download...</div>
+                      <button type="button" id="btn-cancel-manual-export" class="btn btn-outline" style="border-color: var(--danger); color: var(--danger); font-size: 0.7rem; padding: 0.2rem 0.55rem; font-weight: 600; flex-shrink: 0;" onclick="handleCancelManualDownload()">
+                        🛑 Cancelar
+                      </button>
+                    </div>
                   </div>
 
                   <!-- Imagens para Download -->
@@ -2186,9 +2196,42 @@
             }
           }
         }
+      } else if (data.status === 'idle') {
+        clearInterval(pollStatusInterval);
+        document.getElementById('publish-btn').disabled = false;
+        const pCont = document.getElementById('progress-container');
+        if (pCont) pCont.style.display = 'none';
       }
     } catch (e) {
       console.error("Status polling error", e);
+    }
+  }
+
+  async function handleCancelPublish() {
+    const btn = document.getElementById('btn-cancel-publish');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "⏳ Parando...";
+    }
+    try {
+      const res = await fetch('/api/cancel-publish', { method: 'POST' });
+      const data = await res.json();
+      showToast("🛑 " + (data.message || "Publicação cancelada!"));
+      if (pollStatusInterval) {
+        clearInterval(pollStatusInterval);
+        pollStatusInterval = null;
+      }
+      const pCont = document.getElementById('progress-container');
+      if (pCont) pCont.style.display = 'none';
+      const publishBtn = document.getElementById('publish-btn');
+      if (publishBtn) publishBtn.disabled = false;
+    } catch (e) {
+      alert("Erro ao cancelar: " + e.message);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "🛑 Parar / Cancelar";
+      }
     }
   }
 
@@ -2367,9 +2410,54 @@
           badgeEl.style.color = "var(--danger)";
         }
         alert("Erro no download/recorte: " + (data.error || data.message));
+      } else if (data.status === 'idle') {
+        clearInterval(manualPollInterval);
+        manualPollInterval = null;
+        const hudBox = document.getElementById('manual-hud-box');
+        if (hudBox) hudBox.style.display = 'none';
+        if (btnMp4) {
+          btnMp4.disabled = false;
+          btnMp4.textContent = "📥 Baixar Vídeo MP4";
+        }
       }
     } catch (e) {
       console.warn("pollManualExportStatus error", e);
+    }
+  }
+
+  async function handleCancelManualDownload() {
+    const btn = document.getElementById('btn-cancel-manual-export');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "⏳ Cancelando...";
+    }
+    try {
+      const res = await fetch('/api/cancel-manual-export', { method: 'POST' });
+      const data = await res.json();
+      showToast("🛑 " + (data.message || "Download cancelado com sucesso!"));
+
+      if (manualPollInterval) {
+        clearInterval(manualPollInterval);
+        manualPollInterval = null;
+      }
+
+      const hudBox = document.getElementById('manual-hud-box');
+      if (hudBox) hudBox.style.display = 'none';
+
+      const btnMp4 = document.getElementById('btn-download-mp4');
+      if (btnMp4) {
+        btnMp4.disabled = false;
+        btnMp4.textContent = "📥 Baixar Vídeo MP4";
+        btnMp4.classList.remove('btn-primary');
+        btnMp4.classList.add('btn-outline');
+      }
+    } catch (e) {
+      alert("Erro ao cancelar: " + e.message);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "🛑 Cancelar";
+      }
     }
   }
 

@@ -275,7 +275,12 @@ def existing_guids(channel: ET.Element) -> set[str]:
     return {item.findtext("guid", default="") for item in channel.findall("item")}
 
 
-def run_ytdlp_with_progress(cmd: list[str], progress_callback: Any = None) -> None:
+def run_ytdlp_with_progress(
+    cmd: list[str],
+    progress_callback: Any = None,
+    cancellation_check: Any = None,
+    register_proc: Any = None,
+) -> None:
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -283,27 +288,59 @@ def run_ytdlp_with_progress(cmd: list[str], progress_callback: Any = None) -> No
         text=True,
         bufsize=1,
     )
+    if register_proc:
+        try:
+            register_proc(proc)
+        except Exception:
+            pass
+
     progress_regex = re.compile(r"^PROGRESS:\s*([\d\.]+)%\|\s*([^|]+)\|\s*([^|\r\n]+)")
-    if proc.stdout:
-        for line in proc.stdout:
-            line = line.strip()
-            if not line:
-                continue
-            m = progress_regex.match(line)
-            if m and progress_callback:
-                try:
-                    pct = float(m.group(1))
-                    speed = m.group(2).strip()
-                    eta = m.group(3).strip()
-                    progress_callback(pct, speed, eta)
-                except Exception:
-                    pass
-    proc.wait()
+    try:
+        if proc.stdout:
+            for line in proc.stdout:
+                if cancellation_check and cancellation_check():
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=1.0)
+                    except Exception:
+                        proc.kill()
+                    raise InterruptedError("Download cancelado pelo usuário.")
+
+                line = line.strip()
+                if not line:
+                    continue
+                m = progress_regex.match(line)
+                if m and progress_callback:
+                    try:
+                        pct = float(m.group(1))
+                        speed = m.group(2).strip()
+                        eta = m.group(3).strip()
+                        progress_callback(pct, speed, eta)
+                    except Exception:
+                        pass
+        proc.wait()
+    finally:
+        if proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=1.0)
+            except Exception:
+                proc.kill()
+
+    if cancellation_check and cancellation_check():
+        raise InterruptedError("Download cancelado pelo usuário.")
+
     if proc.returncode != 0:
         raise RuntimeError(f"Falha ao executar yt-dlp (código {proc.returncode})")
 
 
-def download_audio(video_id: str, directory: Path, progress_callback: Any = None) -> Path:
+def download_audio(
+    video_id: str,
+    directory: Path,
+    progress_callback: Any = None,
+    cancellation_check: Any = None,
+    register_proc: Any = None,
+) -> Path:
     url = f"https://www.youtube.com/watch?v={video_id}"
     cmd = [
         ytdlp_cmd(),
@@ -318,7 +355,12 @@ def download_audio(video_id: str, directory: Path, progress_callback: Any = None
     if Path("cookies.txt").exists():
         cmd += ["--cookies", "cookies.txt"]
     cmd.append(url)
-    run_ytdlp_with_progress(cmd, progress_callback)
+    run_ytdlp_with_progress(
+        cmd,
+        progress_callback=progress_callback,
+        cancellation_check=cancellation_check,
+        register_proc=register_proc,
+    )
     files = [path for path in directory.glob("source.*") if path.is_file() and path.stat().st_size]
     if len(files) != 1:
         raise RuntimeError(f"Download de {video_id} não gerou um único arquivo de áudio.")
@@ -330,6 +372,8 @@ def download_video(
     directory: Path,
     quality: str = "720",
     progress_callback: Any = None,
+    cancellation_check: Any = None,
+    register_proc: Any = None,
 ) -> Path:
     height = int(quality) if str(quality).isdigit() else 720
     url = f"https://www.youtube.com/watch?v={video_id}"
@@ -347,7 +391,12 @@ def download_video(
     if Path("cookies.txt").exists():
         cmd += ["--cookies", "cookies.txt"]
     cmd.append(url)
-    run_ytdlp_with_progress(cmd, progress_callback)
+    run_ytdlp_with_progress(
+        cmd,
+        progress_callback=progress_callback,
+        cancellation_check=cancellation_check,
+        register_proc=register_proc,
+    )
     files = [path for path in directory.glob("source_video.*") if path.is_file() and path.stat().st_size]
     if not files:
         raise RuntimeError(f"Download do vídeo de {video_id} não gerou arquivo.")
@@ -360,6 +409,8 @@ def encode_mp4(
     start: int | None = None,
     end: int | None = None,
     progress_callback: Any = None,
+    cancellation_check: Any = None,
+    register_proc: Any = None,
 ) -> tuple[int, int]:
     probe_raw = run([
         "ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", str(source)
@@ -392,11 +443,21 @@ def encode_mp4(
                 "-movflags", "+faststart",
                 str(output),
             ]
-            run(command)
+            proc = subprocess.Popen(command)
+            if register_proc:
+                try:
+                    register_proc(proc)
+                except Exception:
+                    pass
+            proc.wait()
+            if cancellation_check and cancellation_check():
+                raise InterruptedError("Cancelado pelo usuário.")
             if progress_callback:
                 progress_callback(100.0, "Concluído", "00:00")
             return output.stat().st_size, int(total_dur)
         except Exception as copy_err:
+            if isinstance(copy_err, InterruptedError):
+                raise
             LOG.warning("Cópia direta (-c copy) falhou, usando re-encoding: %s", copy_err)
 
     command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
@@ -418,19 +479,45 @@ def encode_mp4(
         text=True,
         bufsize=1,
     )
-    if proc.stdout:
-        for line in proc.stdout:
-            line = line.strip()
-            if line.startswith("out_time_us="):
-                try:
-                    us = int(line.split("=")[1])
-                    cur_sec = us / 1_000_000.0
-                    pct = min(99.0, (cur_sec / target_dur) * 100.0)
-                    if progress_callback:
-                        progress_callback(pct, "FFmpeg x264", f"{int(cur_sec)}s / {int(target_dur)}s")
-                except Exception:
-                    pass
-    proc.wait()
+    if register_proc:
+        try:
+            register_proc(proc)
+        except Exception:
+            pass
+
+    try:
+        if proc.stdout:
+            for line in proc.stdout:
+                if cancellation_check and cancellation_check():
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=1.0)
+                    except Exception:
+                        proc.kill()
+                    raise InterruptedError("Codificação cancelada pelo usuário.")
+
+                line = line.strip()
+                if line.startswith("out_time_us="):
+                    try:
+                        us = int(line.split("=")[1])
+                        cur_sec = us / 1_000_000.0
+                        pct = min(99.0, (cur_sec / target_dur) * 100.0)
+                        if progress_callback:
+                            progress_callback(pct, "FFmpeg x264", f"{int(cur_sec)}s / {int(target_dur)}s")
+                    except Exception:
+                        pass
+        proc.wait()
+    finally:
+        if proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=1.0)
+            except Exception:
+                proc.kill()
+
+    if cancellation_check and cancellation_check():
+        raise InterruptedError("Codificação cancelada pelo usuário.")
+
     if proc.returncode != 0:
         err = proc.stderr.read() if proc.stderr else ""
         raise RuntimeError(f"Erro na codificação MP4: {err[-500:]}")

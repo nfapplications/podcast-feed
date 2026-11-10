@@ -141,6 +141,16 @@ class PodcastTests(unittest.TestCase):
         self.assertEqual(normalize_cut_bounds("01:30:00", "01:00:00"), (None, None))
         self.assertEqual(normalize_cut_bounds("00:30:00", "01:15:00"), (1800, 4500))
 
+    def test_cancel_manual_export_and_publish(self):
+        from server import cancel_manual_export, cancel_publish, get_manual_export_state, CURRENT_TASK
+        res_export = cancel_manual_export()
+        self.assertTrue(res_export["ok"])
+        self.assertEqual(get_manual_export_state()["status"], "idle")
+
+        res_pub = cancel_publish()
+        self.assertTrue(res_pub["ok"])
+        self.assertEqual(CURRENT_TASK["status"], "idle")
+
 
 if __name__ == "__main__":
     unittest.main()
