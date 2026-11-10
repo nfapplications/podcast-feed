@@ -1079,6 +1079,7 @@ class StudioHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/suggest-cut":
+            load_env_file()
             raw_id = body.get("video_id", "")
             try:
                 video_id = parse_video_id(raw_id)

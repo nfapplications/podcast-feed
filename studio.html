@@ -2369,20 +2369,6 @@
     }
   }
 
-      // Generation started! Show Cyber HUD
-      if (hudBox) hudBox.style.display = 'block';
-      btnMp4.textContent = isCutting ? "⏳ Baixando & Recortando..." : "⏳ Otimizando Vídeo...";
-
-      if (manualPollInterval) clearInterval(manualPollInterval);
-      manualPollInterval = setInterval(pollManualExportStatus, 1000);
-      pollManualExportStatus();
-    } catch (err) {
-      alert("Erro na requisição: " + err.message);
-      btnMp4.disabled = false;
-      btnMp4.textContent = "📥 Baixar Vídeo MP4";
-    }
-  }
-
   async function pollManualExportStatus() {
     try {
       const res = await fetch('/api/manual-export-status');
@@ -2877,8 +2863,8 @@ Contato: (61) 3386-2122`;
       const data = await res.json();
 
       if (!data.ok) {
-        if (data.error && (data.error.includes("GEMINI_API_KEY") || data.error.includes("401") || data.error.includes("Unauthorized"))) {
-          const userKey = prompt("A chave da API Gemini é inválida ou expirou (deve começar com AIzaSy...).\n\nObtenha gratuitamente em: https://aistudio.google.com/app/apikey\n\nCole a chave correta da API Gemini aqui:");
+        if (data.error && (data.error.includes("GEMINI_API_KEY") || data.error.includes("401") || data.error.includes("Unauthorized") || data.error.includes("chave"))) {
+          const userKey = prompt("A chave da API Gemini precisa ser configurada ou atualizada.\n\nObtenha gratuitamente no Google AI Studio: https://aistudio.google.com/app/apikey\n\nCole a sua chave da API Gemini aqui:");
           if (userKey && userKey.trim()) {
             await fetch('/api/save-gemini-key', {
               method: 'POST',
