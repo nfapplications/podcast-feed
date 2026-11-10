@@ -609,8 +609,12 @@ def manual_export_worker(
 
     exports_dir = Path("exports").resolve()
     exports_dir.mkdir(exist_ok=True)
+    cache_dir = exports_dir / ".cache"
+    cache_dir.mkdir(exist_ok=True)
+
     mp4_path = exports_dir / f"{video_id}.mp4"
     art_path = exports_dir / f"{video_id}.jpg"
+    meta_path = exports_dir / f"{video_id}.meta.json"
 
     def reg_manual_proc(p: subprocess.Popen):
         MANUAL_EXPORT_PROCS.add(p)
@@ -619,73 +623,104 @@ def manual_export_worker(
         return MANUAL_EXPORT_CANCEL_EVENT.is_set()
 
     try:
-        set_manual_export(
-            "running",
-            f"Preparando download do vídeo {video_id} ({quality}p)...",
-            progress=5,
-            stage="downloading",
-            video_id=video_id,
-        )
-
         start_sec, end_sec = normalize_cut_bounds(start_str, end_str)
 
         is_cut = (start_sec is not None and end_sec is not None)
         enc_stage = "encoding" if is_cut else "packaging"
         enc_action = "Recortando e otimizando vídeo MP4" if is_cut else "Otimizando vídeo completo"
 
+        set_manual_export(
+            "running",
+            f"Preparando exportação do vídeo {video_id} ({quality}p)...",
+            progress=5,
+            stage="downloading",
+            video_id=video_id,
+        )
+
         if not art_path.exists():
             set_manual_export("running", "Gerando capa quadrada do episódio...", 10, stage="artwork", video_id=video_id)
             generate_episode_artwork(video_id, art_path)
 
-        if force and mp4_path.exists():
-            mp4_path.unlink()
+        # Se forçado ou o arquivo atual não bater com o corte, apaga o mp4 de export anterior
+        if mp4_path.exists():
+            try:
+                mp4_path.unlink()
+            except Exception:
+                pass
+        if meta_path.exists():
+            try:
+                meta_path.unlink()
+            except Exception:
+                pass
 
-        if not mp4_path.exists():
-            def on_dl(pct: float, spd: str, eta: str):
-                mapped = int(10 + (pct * 0.45))
-                set_manual_export(
-                    "running",
-                    f"Baixando vídeo do YouTube ({quality}p)... {pct:.1f}%",
-                    progress=mapped,
-                    speed=spd,
-                    eta=eta,
-                    stage="downloading",
-                    video_id=video_id,
-                )
+        def on_dl(pct: float, spd: str, eta: str):
+            mapped = int(10 + (pct * 0.45))
+            set_manual_export(
+                "running",
+                f"Baixando vídeo do YouTube ({quality}p)... {pct:.1f}%",
+                progress=mapped,
+                speed=spd,
+                eta=eta,
+                stage="downloading",
+                video_id=video_id,
+            )
 
-            def on_enc(pct: float, spd: str, eta: str):
-                mapped = int(55 + (pct * 0.43))
-                set_manual_export(
-                    "running",
-                    f"{enc_action} (+faststart)... {pct:.1f}%",
-                    progress=mapped,
-                    speed=spd,
-                    eta=eta,
-                    stage=enc_stage,
-                    video_id=video_id,
-                )
+        def on_enc(pct: float, spd: str, eta: str):
+            mapped = int(55 + (pct * 0.43))
+            set_manual_export(
+                "running",
+                f"{enc_action} (+faststart)... {pct:.1f}%",
+                progress=mapped,
+                speed=spd,
+                eta=eta,
+                stage=enc_stage,
+                video_id=video_id,
+            )
 
-            with tempfile.TemporaryDirectory(prefix="manual-export-") as tmp:
-                set_manual_export("running", f"Baixando stream ({quality}p)...", 10, stage="downloading", video_id=video_id)
-                v_src = download_video(
+        # Reutiliza o vídeo bruto em cache se já tiver sido baixado do YouTube antes!
+        raw_source_path = cache_dir / f"raw_{video_id}_{quality}.mp4"
+        if raw_source_path.exists() and raw_source_path.stat().st_size > 100_000:
+            set_manual_export("running", f"Reutilizando vídeo baixado do cache local ({quality}p)...", 50, stage=enc_stage, video_id=video_id)
+            v_src = raw_source_path
+        else:
+            set_manual_export("running", f"Baixando vídeo do YouTube ({quality}p)...", 10, stage="downloading", video_id=video_id)
+            with tempfile.TemporaryDirectory(prefix="dl-raw-") as dl_tmp:
+                dl_file = download_video(
                     video_id,
-                    Path(tmp),
+                    Path(dl_tmp),
                     quality=quality,
                     progress_callback=on_dl,
                     cancellation_check=is_manual_cancelled,
                     register_proc=reg_manual_proc,
                 )
+                if dl_file.exists():
+                    shutil.copy2(str(dl_file), str(raw_source_path))
+            v_src = raw_source_path
 
-                set_manual_export("running", f"{enc_action} com FFmpeg...", 55, stage=enc_stage, video_id=video_id)
-                encode_mp4(
-                    v_src,
-                    mp4_path,
-                    start_sec,
-                    end_sec,
-                    progress_callback=on_enc,
-                    cancellation_check=is_manual_cancelled,
-                    register_proc=reg_manual_proc,
-                )
+        set_manual_export("running", f"{enc_action} com FFmpeg...", 55, stage=enc_stage, video_id=video_id)
+        encode_mp4(
+            v_src,
+            mp4_path,
+            start_sec,
+            end_sec,
+            progress_callback=on_enc,
+            cancellation_check=is_manual_cancelled,
+            register_proc=reg_manual_proc,
+        )
+
+        # Salva o arquivo de metadados garantindo o registro exato do corte
+        meta_data = {
+            "video_id": video_id,
+            "start_str": start_str,
+            "end_str": end_str,
+            "start_sec": start_sec,
+            "end_sec": end_sec,
+            "quality": quality,
+            "is_cut": is_cut,
+            "size": mp4_path.stat().st_size,
+            "updated_at": time.time(),
+        }
+        meta_path.write_text(json.dumps(meta_data, indent=2), encoding="utf-8")
 
         v_size_mb = mp4_path.stat().st_size // 1024 // 1024
         completed_msg = f"Vídeo recortado e pronto! ({v_size_mb} MB)" if is_cut else f"Vídeo completo pronto para download! ({v_size_mb} MB)"
@@ -697,7 +732,7 @@ def manual_export_worker(
             eta="00:00",
             stage="complete",
             video_id=video_id,
-            download_url=f"/exports/{video_id}.mp4",
+            download_url=f"/exports/{video_id}.mp4?v={int(time.time())}",
         )
     except InterruptedError:
         LOG.info("manual_export_worker cancelado pelo usuário.")
@@ -826,20 +861,43 @@ class StudioHandler(BaseHTTPRequestHandler):
             if not v_id:
                 self.send_json({"error": "id e obrigatorio"}, status=400)
                 return
+
+            start_q = query_map.get("start", [None])[0]
+            end_q = query_map.get("end", [None])[0]
+            quality_q = query_map.get("quality", ["720"])[0]
+            req_start_sec, req_end_sec = normalize_cut_bounds(start_q, end_q)
+
             exports_dir = Path("exports").resolve()
             mp4_file = exports_dir / f"{v_id}.mp4"
             art_file = exports_dir / f"{v_id}.jpg"
             mp3_file = exports_dir / f"{v_id}.mp3"
+            meta_file = exports_dir / f"{v_id}.meta.json"
+
             mp4_exists = mp4_file.is_file()
             mp4_size = mp4_file.stat().st_size if mp4_exists else 0
             mp4_formatted = f"{mp4_size // 1024 // 1024} MB" if mp4_exists else None
+
+            mp4_matches_cut = False
+            saved_meta = None
+            if mp4_exists and meta_file.is_file():
+                try:
+                    saved_meta = json.loads(meta_file.read_text(encoding="utf-8"))
+                    if (saved_meta.get("start_sec") == req_start_sec and 
+                        saved_meta.get("end_sec") == req_end_sec and
+                        saved_meta.get("quality", "720") == quality_q):
+                        mp4_matches_cut = True
+                except Exception:
+                    pass
+
             self.send_json({
                 "video_id": v_id,
                 "mp4_exists": mp4_exists,
+                "mp4_matches_cut": mp4_matches_cut,
                 "mp4_size": mp4_size,
                 "mp4_formatted": mp4_formatted,
                 "art_exists": art_file.is_file(),
                 "mp3_exists": mp3_file.is_file(),
+                "saved_meta": saved_meta,
             })
             return
 
@@ -988,11 +1046,14 @@ class StudioHandler(BaseHTTPRequestHandler):
             freed_bytes = 0
             count = 0
             if exports_dir.exists():
-                for f in exports_dir.glob("*"):
+                for f in list(exports_dir.rglob("*")):
                     if f.is_file():
                         freed_bytes += f.stat().st_size
-                        f.unlink()
-                        count += 1
+                        try:
+                            f.unlink()
+                            count += 1
+                        except Exception:
+                            pass
             freed_mb = freed_bytes // 1024 // 1024
             self.send_json({"ok": True, "freed_mb": freed_mb, "message": f"{count} arquivos removidos. {freed_mb} MB de disco liberados!"})
             return
@@ -1072,16 +1133,37 @@ class StudioHandler(BaseHTTPRequestHandler):
 
             exports_dir = Path("exports").resolve()
             mp4_file = exports_dir / f"{video_id}.mp4"
+            meta_file = exports_dir / f"{video_id}.meta.json"
 
+            req_start_sec, req_end_sec = normalize_cut_bounds(start, end)
+
+            # Só considera pronto se o arquivo existe e o corte coincide perfeitamente!
             if mp4_file.is_file() and not force:
-                self.send_json({
-                    "status": "ready",
-                    "video_id": video_id,
-                    "download_url": f"/exports/{video_id}.mp4",
-                    "size": mp4_file.stat().st_size,
-                    "size_formatted": f"{mp4_file.stat().st_size // 1024 // 1024} MB",
-                })
-                return
+                matches_existing = False
+                if meta_file.is_file():
+                    try:
+                        meta = json.loads(meta_file.read_text(encoding="utf-8"))
+                        if (meta.get("start_sec") == req_start_sec and 
+                            meta.get("end_sec") == req_end_sec and 
+                            meta.get("quality", "720") == quality):
+                            matches_existing = True
+                    except Exception:
+                        pass
+                elif req_start_sec is None and req_end_sec is None:
+                    matches_existing = True
+
+                if matches_existing:
+                    self.send_json({
+                        "status": "ready",
+                        "video_id": video_id,
+                        "download_url": f"/exports/{video_id}.mp4?v={int(time.time())}",
+                        "size": mp4_file.stat().st_size,
+                        "size_formatted": f"{mp4_file.stat().st_size // 1024 // 1024} MB",
+                    })
+                    return
+                else:
+                    # Corte ou qualidade diferentes: força nova geração!
+                    force = True
 
             curr_state = get_manual_export_state()
             if curr_state.get("status") == "running" and curr_state.get("video_id") == video_id:

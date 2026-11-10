@@ -1870,6 +1870,10 @@
         btnMp4.classList.add('btn-primary');
       }
     }
+
+    if (currentVideoId) {
+      updateSpotifyCardUrls(currentVideoId);
+    }
   }
 
   // Atalhos de teclado profissionais (I = Mark In, O = Mark Out, [ = Seek In, ] = Seek Out, Espaço = Play/Pause)
@@ -2261,14 +2265,27 @@
     const btnMp4 = document.getElementById('btn-download-mp4');
     if (!btnMp4) return;
 
+    let sVal = document.getElementById('display-start')?.value || document.getElementById('cut-start-input')?.value || "";
+    let eVal = document.getElementById('display-end')?.value || document.getElementById('cut-end-input')?.value || "";
+    let sSec = parseFormattedTime(sVal);
+    let eSec = parseFormattedTime(eVal);
+    let start = (sSec && sSec > 0) ? formatSeconds(sSec) : "";
+    let end = (eSec && eSec > 0) ? formatSeconds(eSec) : "";
+    const quality = getSelectedQuality();
+
     try {
-      const res = await fetch(`/api/check-export?id=${encodeURIComponent(videoId)}`);
+      const qUrl = `/api/check-export?id=${encodeURIComponent(videoId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&quality=${encodeURIComponent(quality)}`;
+      const res = await fetch(qUrl);
       if (res.ok) {
         const data = await res.json();
-        if (data.mp4_exists) {
+        if (data.mp4_matches_cut) {
           btnMp4.innerHTML = `📥 Baixar Vídeo MP4 <span style="font-size: 0.72rem; opacity: 0.85;">(Pronto: ${data.mp4_formatted})</span>`;
           btnMp4.classList.remove('btn-outline');
           btnMp4.classList.add('btn-primary');
+        } else if (data.mp4_exists) {
+          btnMp4.innerHTML = `✂️ Gerar Novo Recorte MP4 <span style="font-size: 0.72rem; opacity: 0.85;">(Recorte modificado)</span>`;
+          btnMp4.classList.remove('btn-primary');
+          btnMp4.classList.add('btn-outline');
         } else {
           btnMp4.innerHTML = `📥 Baixar Vídeo MP4 <span style="font-size: 0.72rem; opacity: 0.85;">(Baixar & Recortar)</span>`;
           btnMp4.classList.remove('btn-primary');
@@ -2332,10 +2349,25 @@
         btnMp4.innerHTML = `📥 Baixar Vídeo MP4 <span style="font-size: 0.72rem;">(${data.size_formatted || 'Pronto'})</span>`;
         btnMp4.classList.remove('btn-outline');
         btnMp4.classList.add('btn-primary');
-        window.location.href = data.download_url + '?download=1';
-        showToast("📥 Download iniciado! Arquivo já estava pronto no disco.");
+        const sep = data.download_url.includes('?') ? '&' : '?';
+        window.location.href = data.download_url + sep + 'download=1';
+        showToast("📥 Download iniciado! Arquivo pronto no disco.");
         return;
       }
+
+      // Geração iniciada! Exibe Cyber HUD
+      if (hudBox) hudBox.style.display = 'block';
+      btnMp4.textContent = isCutting ? "⏳ Recortando Vídeo..." : "⏳ Otimizando Vídeo...";
+
+      if (manualPollInterval) clearInterval(manualPollInterval);
+      manualPollInterval = setInterval(pollManualExportStatus, 1000);
+      pollManualExportStatus();
+    } catch (err) {
+      alert("Erro na requisição: " + err.message);
+      btnMp4.disabled = false;
+      btnMp4.textContent = "📥 Baixar Vídeo MP4";
+    }
+  }
 
       // Generation started! Show Cyber HUD
       if (hudBox) hudBox.style.display = 'block';
